@@ -148,5 +148,5 @@ from handlers.misc import router as misc
 from handlers.admin import router as admin
 from handlers.trial import router as trial
 
-for r in [start, up, getf, pay, vip, creator, wd, misc, admin, trial]:
+for r in [start, up, getf, pay, vip, creator, wd, admin, misc, trial]:
     dp.include_router(r)
