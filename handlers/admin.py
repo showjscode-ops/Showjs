@@ -15,7 +15,7 @@ router=Router()
 @router.message(Command('admin'))
 async def admin_command(m):
     if not await admin_access(m.from_user.id):
-        return await m.answer('❌ Kamu tidak memiliki akses admin.')
+        return await m.answer(f'❌ Kamu tidak memiliki akses admin.\n\n🆔 Telegram ID kamu: <code>{m.from_user.id}</code>\n\nMasukkan ID ini ke OWNER_ID atau ADMINS/ADMIN_IDS di Railway, lalu redeploy.', parse_mode='HTML')
     p=await get_pool()
     try:
         users=await p.fetchval("SELECT COUNT(*) FROM users")
@@ -62,17 +62,17 @@ async def panel_text():
 
 @router.message(Command('panel'))
 async def panel(m):
- if not admin(m.from_user.id): return
+ if not await admin_access(m.from_user.id): return await m.answer(f'❌ Tidak ada akses admin.\n🆔 <code>{m.from_user.id}</code>',parse_mode='HTML')
  await m.answer(await panel_text(),parse_mode='HTML',reply_markup=kb())
 
 @router.callback_query(F.data=='adm:panel')
 async def refresh(c):
- if not admin(c.from_user.id): return await c.answer('No access',show_alert=True)
+ if not await admin_access(c.from_user.id): return await c.answer('No access',show_alert=True)
  await c.message.edit_text(await panel_text(),parse_mode='HTML',reply_markup=kb())
 
 @router.callback_query(F.data=='adm:payments')
 async def payments(c):
- if not admin(c.from_user.id): return
+ if not await admin_access(c.from_user.id): return
  p=await get_pool()
  rows=[]
  for key,label in [('payment_bayargg_enabled','⚡ BayarGG'),('payment_cashi_enabled','💳 Cashi'),('payment_manual_enabled','🧾 QR Manual'),('payment_balance_enabled','💰 Saldo')]:
@@ -83,7 +83,7 @@ async def payments(c):
 
 @router.callback_query(F.data.startswith('admtoggle:'))
 async def admtoggle(c):
- if not admin(c.from_user.id): return
+ if not await admin_access(c.from_user.id): return
  key=c.data.split(':',1)[1]; old=await val(key); await setval(key,'off' if old=='on' else 'on'); await payments(c)
 
 @router.callback_query(F.data=='adm:control')
@@ -96,19 +96,19 @@ async def control(c):
 
 @router.callback_query(F.data.startswith('admtoggle2:'))
 async def admtoggle2(c):
- if not admin(c.from_user.id): return
+ if not await admin_access(c.from_user.id): return
  key=c.data.split(':',1)[1]; old=await val(key); await setval(key,'off' if old=='on' else 'on'); await control(c)
 
 @router.callback_query(F.data.startswith('admset:'))
 async def admset(c,state:FSMContext):
- if not admin(c.from_user.id): return
+ if not await admin_access(c.from_user.id): return
  typ=c.data.split(':')[1]; await state.set_state(AdminState.user_action)
  await state.update_data(setting='media_send_delay_ms' if typ=='mediadelay' else 'vip_code_delay_minutes')
  await c.message.answer('Kirim angka baru.')
 
 @router.callback_query(F.data=='adm:stats')
 async def stats(c):
- if not admin(c.from_user.id): return
+ if not await admin_access(c.from_user.id): return
  p=await get_pool()
  r=await p.fetchrow("SELECT COUNT(*) users FROM users")
  f=await p.fetchrow("SELECT COUNT(*) codes,COALESCE(SUM(media_count),0) media,COALESCE(SUM(views),0) views FROM files")
@@ -116,7 +116,7 @@ async def stats(c):
 
 @router.callback_query(F.data=='adm:b2')
 async def b2menu(c):
- if not admin(c.from_user.id): return
+ if not await admin_access(c.from_user.id): return
  rows=[]
  preferred=int(await (await get_pool()).fetchval("SELECT value FROM settings WHERE key='preferred_b2_account'") or 0)
  for a in b2_pool.accounts:
@@ -127,17 +127,17 @@ async def b2menu(c):
 
 @router.callback_query(F.data.startswith('b2select:'))
 async def b2select(c):
- if not admin(c.from_user.id): return
+ if not await admin_access(c.from_user.id): return
  aid=int(c.data.split(':')[1]); await setval('preferred_b2_account',aid); await c.answer(f'B2 #{aid} menjadi target upload.'); await b2menu(c)
 
 @router.callback_query(F.data=='b2auto')
 async def b2auto(c):
- if not admin(c.from_user.id): return
+ if not await admin_access(c.from_user.id): return
  await setval('preferred_b2_account',0); await c.answer('AUTO / FAILOVER aktif.'); await b2menu(c)
 
 @router.callback_query(F.data=='b2health')
 async def b2health(c):
- if not admin(c.from_user.id): return
+ if not await admin_access(c.from_user.id): return
  lines=['🩺 <b>B2 HEALTH</b>']
  for a in b2_pool.accounts:
   try:
@@ -147,7 +147,7 @@ async def b2health(c):
 
 @router.callback_query(F.data=='b2stats')
 async def b2stats(c):
- if not admin(c.from_user.id): return
+ if not await admin_access(c.from_user.id): return
  lines=['📦 <b>B2 CAPACITY</b>']
  for a in b2_pool.accounts:
   try:
@@ -158,7 +158,7 @@ async def b2stats(c):
 
 @router.message(Command('moveb2'))
 async def moveb2(m):
- if not admin(m.from_user.id): return
+ if not await admin_access(m.from_user.id): return await m.answer(f'❌ Tidak ada akses admin.\n🆔 <code>{m.from_user.id}</code>',parse_mode='HTML')
  parts=(m.text or '').split(maxsplit=3)
  if len(parts)!=4:return await m.answer('Format: <code>/moveb2 FROM TO CODE</code>',parse_mode='HTML')
  src,dst,code=int(parts[1]),int(parts[2]),parts[3]
@@ -176,7 +176,7 @@ async def moveb2(m):
 
 @router.callback_query(F.data=='adm:manual')
 async def manual(c):
- if not admin(c.from_user.id): return
+ if not await admin_access(c.from_user.id): return
  rows=await (await get_pool()).fetch("SELECT id,user_id,amount,status FROM manual_deposits WHERE status='pending' ORDER BY id DESC LIMIT 20")
  text='🧾 <b>MANUAL PAYMENTS</b>\\n\\n'+('\\n'.join(f"#{r['id']} • {r['user_id']} • {r['amount']} • {r['status']}" for r in rows) if rows else 'Tidak ada pending.')
  buttons=[[InlineKeyboardButton(text=f'✅ #{r["id"]} Approve',callback_data=f'manapprove:{r["id"]}'),InlineKeyboardButton(text='❌ Reject',callback_data=f'manreject:{r["id"]}')] for r in rows]
@@ -185,7 +185,7 @@ async def manual(c):
 
 @router.callback_query(F.data.startswith('adm:users'))
 async def users(c):
- if not admin(c.from_user.id): return
+ if not await admin_access(c.from_user.id): return
  try: page=int(c.data.split(':')[2]) if len(c.data.split(':'))>2 else 0
  except: page=0
  off=page*15; rows=await (await get_pool()).fetch("SELECT user_id,username,balance,points,stars,vip,banned,is_creator FROM users ORDER BY last_seen DESC LIMIT 15 OFFSET $1",off)
@@ -199,19 +199,19 @@ async def users(c):
 
 @router.callback_query(F.data=='adm:codes')
 async def codes(c):
- if not admin(c.from_user.id): return
+ if not await admin_access(c.from_user.id): return
  rows=await (await get_pool()).fetch("SELECT code,title,price_idr,views,likes,hates,favorites FROM files ORDER BY id DESC LIMIT 15")
  text='🗂 <b>CODES</b>\\n\\n'+('\\n'.join(f"<code>{r['code']}</code> • {html.escape(r['title'] or '-') } • Rp{int(r['price_idr'] or 0):,} • 👁{r['views']} 👍{r['likes']} 👎{r['hates']} ⭐{r['favorites']}" for r in rows).replace(',','.') if rows else 'Kosong')
  await c.message.edit_text(text,parse_mode='HTML',reply_markup=InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text='🔙 Panel',callback_data='adm:panel')]]))
 
 @router.callback_query(F.data=='adm:broadcast')
 async def broadcast_start(c,state):
- if not admin(c.from_user.id): return
+ if not await admin_access(c.from_user.id): return
  await state.set_state(AdminState.broadcast); await c.message.answer('📢 Kirim pesan broadcast.')
 
 @router.message(AdminState.broadcast)
 async def broadcast(m,state):
- if not admin(m.from_user.id): return
+ if not await admin_access(m.from_user.id): return await m.answer(f'❌ Tidak ada akses admin.\n🆔 <code>{m.from_user.id}</code>',parse_mode='HTML')
  users=await (await get_pool()).fetch("SELECT user_id FROM users WHERE NOT banned")
  ok=0
  for r in users:
@@ -275,7 +275,7 @@ async def user_action(m):
 
 @router.message(Command('setcodeprice'))
 async def setcodeprice(m):
- if not admin(m.from_user.id): return
+ if not await admin_access(m.from_user.id): return await m.answer(f'❌ Tidak ada akses admin.\n🆔 <code>{m.from_user.id}</code>',parse_mode='HTML')
  parts=(m.text or '').split()
  if len(parts)!=3:return await m.answer('/setcodeprice CODE PRICE')
  price=int(re.sub(r'\D','',parts[2]))
@@ -285,7 +285,7 @@ async def setcodeprice(m):
 
 @router.message(Command('setcodetags'))
 async def setcodetags(m):
- if not admin(m.from_user.id): return
+ if not await admin_access(m.from_user.id): return await m.answer(f'❌ Tidak ada akses admin.\n🆔 <code>{m.from_user.id}</code>',parse_mode='HTML')
  parts=(m.text or '').split(maxsplit=2)
  if len(parts)!=3:return await m.answer('/setcodetags CODE tag1 tag2 tag3')
  tags=[x[:30] for x in parts[2].split()[:10]]
@@ -294,14 +294,14 @@ async def setcodetags(m):
 
 @router.callback_query(F.data=='adm:errors')
 async def errors(c):
- if not admin(c.from_user.id): return
+ if not await admin_access(c.from_user.id): return
  rows=await (await get_pool()).fetch("SELECT source,message,created_at FROM error_logs ORDER BY id DESC LIMIT 20")
  text='🚨 <b>BOT ERRORS</b>\n\n'+('\n'.join(f"• {r['created_at']:%d-%m %H:%M} [{html.escape(r['source'] or '-')}] {html.escape(r['message'][:180])}" for r in rows) if rows else 'Tidak ada error.')
  await c.message.edit_text(text,parse_mode='HTML',reply_markup=InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text='🔙 Panel',callback_data='adm:panel')]]))
 
 @router.message(AdminState.user_action)
 async def save_setting(m,state):
- if not admin(m.from_user.id): return
+ if not await admin_access(m.from_user.id): return await m.answer(f'❌ Tidak ada akses admin.\n🆔 <code>{m.from_user.id}</code>',parse_mode='HTML')
  d=await state.get_data()
  key=d.get('setting')
  if not key:return
