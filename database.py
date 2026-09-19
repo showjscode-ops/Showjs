@@ -100,8 +100,8 @@ async def init_db():
     """)
     await p.execute("""
     INSERT INTO users(user_id,is_admin)
-    SELECT $1,TRUE
-    WHERE $1 <> 0
+    SELECT $1::BIGINT,TRUE
+    WHERE $1::BIGINT <> 0
     ON CONFLICT(user_id) DO UPDATE SET is_admin=TRUE
     """, int(os.getenv("OWNER_ID","0") or 0))
     await p.fetchval("SELECT 1")
