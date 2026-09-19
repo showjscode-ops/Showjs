@@ -9,3 +9,4 @@ Pillow==11.3.0
 google-api-python-client==2.181.0
 google-auth==2.40.3
 aiofiles==24.1.0
+requests>=2.31.0
