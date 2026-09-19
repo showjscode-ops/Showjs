@@ -31,16 +31,11 @@ async def verify_join(c:CallbackQuery):
 
 
 POINTS_HELP_TEXT = (
-    "💡 Cara mendapatkan Poin:
-"
-    "• 🚀 Update media dan share untuk mendapatkan poin
-"
-    "• 🎁 Check In: 0.1 Poin/hari
-"
-    "• 🎁 Hari ke-7: +1 Poin
-"
-    "• 🪙 Beli Poin agar cepat dapat membuka media
-"
+    "💡 Cara mendapatkan Poin:\n"
+    "• 🚀 Update media dan share untuk mendapatkan poin\n"
+    "• 🎁 Check In: 0.1 Poin/hari\n"
+    "• 🎁 Hari ke-7: +1 Poin\n"
+    "• 🪙 Beli Poin agar cepat dapat membuka media\n"
     "• ⭐️ Beli Star untuk media permanen"
 )
 
