@@ -5,6 +5,7 @@ from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import StatesGroup,State
 from database import get_pool
 from config import OWNER_ID,ADMIN_IDS,TRIAL_POINTS,TRIAL_STARS
+from utils.callback_loading import loading
 router=Router()
 class CreatorState(StatesGroup): user_id=State()
 def admin(uid):return uid==OWNER_ID or uid in ADMIN_IDS
@@ -23,7 +24,7 @@ async def panel(m):
 @router.callback_query(F.data=='adm:panel')
 async def refresh(c):
  if not admin(c.from_user.id):return await c.answer('No access',show_alert=True)
- await c.answer(); await c.message.edit_text(await panel_text(),parse_mode='HTML',reply_markup=await panel_msg())
+ await loading(c); await c.message.edit_text(await panel_text(),parse_mode='HTML',reply_markup=await panel_msg())
 @router.callback_query(F.data.startswith('adm:'))
 async def toggle(c,state:FSMContext):
  if not admin(c.from_user.id):return await c.answer('No access',show_alert=True)
@@ -31,7 +32,7 @@ async def toggle(c,state:FSMContext):
  if key:
   old=await val(key); new='off' if old=='on' else 'on'; await (await get_pool()).execute('UPDATE settings SET value=$1 WHERE key=$2',new,key); await c.answer('Updated'); await c.message.edit_text(await panel_text(),parse_mode='HTML',reply_markup=await panel_msg()); return
  if c.data=='adm:creator':
-  await c.answer(); await state.set_state(CreatorState.user_id); await c.message.answer('Kirim Telegram ID user yang akan dijadikan Creator.'); return
+  await loading(c); await state.set_state(CreatorState.user_id); await c.message.answer('Kirim Telegram ID user yang akan dijadikan Creator.'); return
  if c.data=='adm:trial_owner':
   if c.from_user.id!=OWNER_ID: return await c.answer('Khusus owner.',show_alert=True)
   if (await val('trial_enabled'))!='on': return await c.answer('Trial sedang OFF.',show_alert=True)

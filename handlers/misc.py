@@ -4,6 +4,7 @@ from database import get_pool
 from utils.economy import checkin
 from config import CODE_GROUP_URL, NOTICE_CHANNEL_URL, CODE_GROUP_TITLE, NOTIF_CHANNEL_ID, BOT_USERNAME
 
+from utils.callback_loading import loading
 router=Router()
 
 @router.callback_query(F.data=='checkin')
@@ -23,7 +24,7 @@ async def my(c):
         '\n'.join(f'🔑 <code>{r["code"]}</code> • {r["media_count"]} media\n📝 {r["title"] or "-"}' for r in rows)
         if rows else 'Belum ada code.'
     )
-    await c.answer(); await c.message.edit_text(text,parse_mode='HTML',reply_markup=InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text='🔙 Kembali',callback_data='menu_lainnya')]]))
+    await loading(c); await c.message.edit_text(text,parse_mode='HTML',reply_markup=InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text='🔙 Kembali',callback_data='menu_lainnya')]]))
 
 @router.callback_query(F.data=='group_code')
 async def group(c):
@@ -32,11 +33,11 @@ async def group(c):
         '\n'.join(f'🔑 <code>{r["code"]}</code> • {r["group_id"]}' for r in rows)
         if rows else 'Belum ada CODE yang terdeteksi di group.'
     )
-    await c.answer(); await c.message.edit_text(text,parse_mode='HTML',reply_markup=InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text='🔙 Kembali',callback_data='menu_lainnya')]]))
+    await loading(c); await c.message.edit_text(text,parse_mode='HTML',reply_markup=InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text='🔙 Kembali',callback_data='menu_lainnya')]]))
 
 @router.callback_query(F.data=='help')
 async def help_(c):
-    await c.answer()
+    await loading(c)
     await c.message.edit_text(
         '❓ <b>HELP</b>\n\n📤 Up File → media otomatis ke Google Drive.\n📥 Get File → unlock dengan Poin atau Star.\n🪙 Poin → akses 24 jam.\n⭐ Star → akses 48 jam.\n👑 Creator → potongan Poin 50% dan +1 Poin setiap unlock berhasil.\n🎁 Check In → hari 1-6 = 0.1 Poin, hari 7 = 1 Poin.',
         parse_mode='HTML',
@@ -48,7 +49,7 @@ async def vip(c):
     rows=await (await get_pool()).fetch("SELECT code,name,price,duration_days FROM vip_packages WHERE active ORDER BY price")
     kb=[[InlineKeyboardButton(text=f'💎 {r["name"]} • Rp{int(r["price"]):,}'.replace(',','.'),callback_data=f'vip:{r["code"]}')] for r in rows]
     kb.append([InlineKeyboardButton(text='🔙 Kembali',callback_data='home')])
-    await c.answer(); await c.message.edit_text('💎 <b>BUY VIP</b>\n\nPilih paket:',parse_mode='HTML',reply_markup=InlineKeyboardMarkup(inline_keyboard=kb))
+    await loading(c); await c.message.edit_text('💎 <b>BUY VIP</b>\n\nPilih paket:',parse_mode='HTML',reply_markup=InlineKeyboardMarkup(inline_keyboard=kb))
 
 def quick_links():
     rows=[]

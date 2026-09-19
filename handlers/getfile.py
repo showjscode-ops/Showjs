@@ -8,6 +8,7 @@ from utils.media_sender import deliver_one
 from utils.notify_channel import notify
 from config import STAR_PER_MEDIA
 from datetime import datetime,timezone
+from utils.callback_loading import loading
 router=Router()
 def buttons(code,n,creator):
  p=n*0.5 if creator else n; s=n*STAR_PER_MEDIA
@@ -18,7 +19,7 @@ async def show(m,code):
  n=int(f['media_count']); c=await is_creator(m.from_user.id); pc=n*0.5 if c else n; sc=n*STAR_PER_MEDIA
  await m.answer(f'🔐 <b>MEDIA TERKUNCI</b>\n\n🔑 <code>{html.escape(code)}</code>\n📦 Total Media: <b>{n}</b>\n\n🪙 Poin: <b>{pc:g}</b>\n⭐ Star: <b>{sc:g}</b>\n\nPilih pembayaran:',parse_mode='HTML',reply_markup=buttons(code,n,c))
 @router.callback_query(F.data=='getfile')
-async def start(c): await c.answer(); await c.message.answer('📥 Kirim CODE yang ingin dibuka.')
+async def start(c): await loading(c); await c.message.answer('📥 Kirim CODE yang ingin dibuka.')
 @router.message(F.text.regexp(r'^[A-Za-z0-9]+_[123456789XxYy]{11}_[0-9]+p[0-9]+v[0-9]+d$'))
 async def receive(m):
     code=m.text.strip()
@@ -32,7 +33,7 @@ async def receive(m):
 
 @router.callback_query(F.data.startswith('getcode:'))
 async def getcode(c):
-    await c.answer()
+    await loading(c)
     await show(c.message,c.data.split(':',1)[1])
 
 async def open_media(c,method):

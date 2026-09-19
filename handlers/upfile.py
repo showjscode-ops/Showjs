@@ -7,6 +7,7 @@ from aiogram.fsm.state import StatesGroup,State
 from database import get_pool
 from config import MAX_MEDIA,BOT_USERNAME
 from utils.google_drive import drive_pool
+from utils.callback_loading import loading
 router=Router()
 class U(StatesGroup): media=State(); price=State()
 def rnd(n=11): return ''.join(secrets.choice('123456789XxYy') for _ in range(n))
@@ -18,7 +19,7 @@ async def new_code(counts):
 def kb():return InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text='💾 Simpan & Buat Code',callback_data='up_save')],[InlineKeyboardButton(text='❌ Batal',callback_data='up_cancel')]])
 @router.callback_query(F.data=='upfile')
 async def start(c,state):
- await c.answer(); await state.clear(); await state.set_state(U.media); await state.update_data(media=[]); await c.message.answer(f'📤 <b>UP FILE</b>\n\nKirim maksimal <b>{MAX_MEDIA}</b> media. Semua media otomatis masuk Google Drive. Setelah selesai tekan Simpan.',parse_mode='HTML',reply_markup=kb())
+ await loading(c); await state.clear(); await state.set_state(U.media); await state.update_data(media=[]); await c.message.answer(f'📤 <b>UP FILE</b>\n\nKirim maksimal <b>{MAX_MEDIA}</b> media. Semua media otomatis masuk Google Drive. Setelah selesai tekan Simpan.',parse_mode='HTML',reply_markup=kb())
 @router.message(U.media)
 async def receive(m,state):
  d=await state.get_data(); media=list(d.get('media',[])); title=(d.get('title') or '').strip()
@@ -41,7 +42,7 @@ async def receive(m,state):
   try:os.remove(path)
   except:pass
 @router.callback_query(F.data=='up_cancel')
-async def cancel(c,state): await c.answer(); await state.clear(); await c.message.edit_text('❌ Upload dibatalkan.')
+async def cancel(c,state): await loading(c); await state.clear(); await c.message.edit_text('❌ Upload dibatalkan.')
 @router.callback_query(F.data=='up_save')
 async def save(c,state):
  d=await state.get_data(); media=d.get('media',[])
@@ -52,7 +53,7 @@ async def save(c,state):
  p=await get_pool()
  await p.execute("INSERT INTO files(code,owner_id,title,media,media_count,photo_count,video_count,document_count,audio_count,code_value_idr) VALUES($1,$2,$3,$4::jsonb,$5,$6,$7,$8,$9,$10)",code,c.from_user.id,title,json.dumps(media),len(media),counts[0],counts[1],counts[2],sum(x['type']=='audio' for x in media),value)
  await state.clear()
- await c.answer()
+ await loading(c)
  await c.message.edit_text(
      f'✅ <b>CODE BERHASIL DIBUAT</b>\n\n📝 Judul: <b>{title}</b>\n🔑 <code>{code}</code>\n📦 {counts[0]}p{counts[1]}v{counts[2]}d\n🪙 Unlock: {len(media)} Poin\n⭐ Unlock: {len(media)*0.02:g} Star',
      parse_mode='HTML'

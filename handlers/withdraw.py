@@ -4,6 +4,7 @@ from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import StatesGroup,State
 from database import get_pool
 from config import WITHDRAW_CHANNEL_ID
+from utils.callback_loading import loading
 router=Router()
 class W(StatesGroup): amount=State();method=State();account=State()
 @router.callback_query(F.data=='withdraw')
@@ -12,7 +13,7 @@ async def start(c,state):
  if not ok:return await c.answer('Hanya Creator.',show_alert=True)
  enabled=str(await p.fetchval("SELECT value FROM settings WHERE key='withdraw_enabled'") or 'on')=='on'
  if not enabled:return await c.answer('Withdraw sedang ditutup.',show_alert=True)
- await c.answer(); await state.set_state(W.amount); await c.message.answer(f"💸 Saldo tersedia: Rp{int(ok['earnings'] or 0):,}\n\nKirim nominal WD.".replace(',','.'))
+ await loading(c); await state.set_state(W.amount); await c.message.answer(f"💸 Saldo tersedia: Rp{int(ok['earnings'] or 0):,}\n\nKirim nominal WD.".replace(',','.'))
 @router.message(W.amount)
 async def amount(m,state):
  try:a=float((m.text or '').replace('.','').replace(',',''))
