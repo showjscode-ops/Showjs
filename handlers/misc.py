@@ -35,6 +35,18 @@ async def group(c):
     )
     await loading(c); await c.message.edit_text(text,parse_mode='HTML',reply_markup=InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text='🔙 Kembali',callback_data='menu_lainnya')]]))
 
+
+@router.callback_query(F.data=='top_codes')
+async def top_codes(c):
+    rows=await (await get_pool()).fetch("""SELECT code,title,views,likes,hates,favorites,price_idr
+      FROM files WHERE active=TRUE ORDER BY views DESC,likes DESC LIMIT 10""")
+    text='🏆 <b>TOP 10 CODE</b>\n\n'
+    if not rows:text+='Belum ada code.'
+    else:
+        for i,r in enumerate(rows,1):
+            text+=f"{i}. <b>{html.escape(r['title'] or 'Untitled')}</b>\n🔑 <code>{r['code']}</code>\n👁 {r['views']} • 👍 {r['likes']} • 👎 {r['hates']} • ⭐ {r['favorites']}\n\n"
+    await loading(c); await c.message.edit_text(text,parse_mode='HTML',reply_markup=InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text='🔙 Kembali',callback_data='home')]]))
+
 @router.callback_query(F.data=='help')
 async def help_(c):
     await loading(c)
