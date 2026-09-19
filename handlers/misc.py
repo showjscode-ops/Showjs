@@ -39,7 +39,7 @@ async def group(c):
 async def help_(c):
     await loading(c)
     await c.message.edit_text(
-        '❓ <b>HELP</b>\n\n📤 Up File → media otomatis ke Google Drive.\n📥 Get File → unlock dengan Poin atau Star.\n🪙 Poin → akses 24 jam.\n⭐ Star → akses 48 jam.\n👑 Creator → potongan Poin 50% dan +1 Poin setiap unlock berhasil.\n🎁 Check In → hari 1-6 = 0.1 Poin, hari 7 = 1 Poin.',
+        '❓ <b>HELP</b>\n\n📤 Up File → media otomatis ke Backblaze B2.\n📥 Get File → unlock dengan Poin atau Star.\n🪙 Poin → akses 24 jam.\n⭐ Star → akses 48 jam.\n👑 Creator → potongan Poin 50% dan +1 Poin setiap unlock berhasil.\n🎁 Check In → hari 1-6 = 0.1 Poin, hari 7 = 1 Poin.',
         parse_mode='HTML',
         reply_markup=InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text='🔙 Kembali',callback_data='menu_lainnya')]])
     )

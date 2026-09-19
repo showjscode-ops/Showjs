@@ -6,7 +6,7 @@ from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import StatesGroup,State
 from database import get_pool
 from config import MAX_MEDIA,BOT_USERNAME
-from utils.google_drive import drive_pool
+from utils.b2_storage import b2_pool
 from utils.callback_loading import loading
 router=Router()
 class U(StatesGroup): media=State(); price=State()
@@ -24,7 +24,7 @@ async def start(c,state):
  await state.set_state(U.media)
  await state.update_data(media=[], status_message_id=None)
  msg = await c.message.answer(
-     f'📤 <b>UP FILE</b>\n\nKirim maksimal <b>{MAX_MEDIA}</b> media. Semua media otomatis masuk Google Drive. Setelah selesai tekan Simpan.',
+     f'📤 <b>UP FILE</b>\n\nKirim maksimal <b>{MAX_MEDIA}</b> media. Semua media otomatis masuk Backblaze B2. Setelah selesai tekan Simpan.',
      parse_mode='HTML', reply_markup=kb())
  await state.update_data(status_message_id=msg.message_id)
 @router.message(U.media)
@@ -58,13 +58,13 @@ async def receive(m,state):
   try: await m.delete()
   except Exception: pass
   return
- if not drive_pool.available:
+ if not b2_pool.available:
   try: await m.delete()
   except Exception: pass
   if status_id:
    try:
     await m.bot.edit_message_text(chat_id=m.chat.id, message_id=status_id,
-        text='⚠️ <b>Storage belum dikonfigurasi.</b>', parse_mode='HTML', reply_markup=kb())
+        text='⚠️ <b>Backblaze B2 belum dikonfigurasi.</b>', parse_mode='HTML', reply_markup=kb())
    except Exception: pass
   return
  fd,path=tempfile.mkstemp(prefix='pastele_'); os.close(fd)
@@ -79,8 +79,8 @@ async def receive(m,state):
    except Exception: pass
   f=await m.bot.get_file(fid)
   await m.bot.download_file(f.file_path,path)
-  account,drive_id,_=await drive_pool.upload(path,name,mime)
-  media.append({'drive_account':account,'drive_file_id':drive_id,'type':typ,'file_name':name,'file_size':size,'mime_type':mime})
+  account,b2_key,_=await b2_pool.upload(path,name,mime)
+  media.append({'drive_account':account,'drive_file_id':b2_key,'type':typ,'file_name':name,'file_size':size,'mime_type':mime})
   title = title or (m.caption or '').strip()
   await state.update_data(media=media,title=title)
   if status_id:
