@@ -42,11 +42,12 @@ CASHI_PAYMENT_CHANNEL=os.getenv("CASHI_PAYMENT_CHANNEL","QRIS_CUSTOM").strip()
 CASHI_MIN_AMOUNT=env_int("CASHI_MIN_AMOUNT",2000)
 CASHI_MAX_AMOUNT=env_int("CASHI_MAX_AMOUNT",10000000)
 
-# Storage: up to 10 service accounts. Each JSON must have its own Drive folder shared to that account.
-GOOGLE_DRIVE_COUNT=min(max(env_int("GOOGLE_DRIVE_COUNT",10),1),10)
+# Storage: Backblaze B2, up to 10 S3-compatible storage accounts.
+# Account 1 uses the short B2_* variables; accounts 2-10 may use B2_2_* ... B2_10_*.
+B2_COUNT=min(max(env_int("B2_COUNT",1),1),10)
 
 # Bot rules
-MAX_MEDIA=env_int("MAX_MEDIA",50)
+MAX_MEDIA=env_int("MAX_MEDIA",200)
 POINT_UNLOCK_HOURS=24
 STAR_UNLOCK_HOURS=48
 STAR_PER_MEDIA=0.02  # 25 media=0.5 Star, 50=1 Star

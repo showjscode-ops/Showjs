@@ -5,7 +5,13 @@ from config import BOT_TOKEN
 from middlewares.subscription import SubscriptionMiddleware
 import asyncio
 
-bot = Bot(BOT_TOKEN, default=DefaultBotProperties(parse_mode="HTML"))
+class TrackedBot(Bot):
+    async def send_message(self, *args, **kwargs):
+        msg = await super().send_message(*args, **kwargs)
+        _track_message(msg)
+        return msg
+
+bot = TrackedBot(BOT_TOKEN, default=DefaultBotProperties(parse_mode="HTML"))
 dp = Dispatcher()
 dp.message.middleware(SubscriptionMiddleware())
 dp.callback_query.middleware(SubscriptionMiddleware())
@@ -30,6 +36,49 @@ def _loading_markup(markup: InlineKeyboardMarkup, target: CallbackQuery):
     return InlineKeyboardMarkup(inline_keyboard=rows), changed
 
 
+# Per-chat message tracker. It records messages sent by this bot so callback
+# actions can remove stale prompts/menus before showing the next screen.
+# Only a bounded recent set is kept to avoid unbounded memory growth.
+_TRACKED_MESSAGES = {}
+_TRACKED_LIMIT = 80
+
+def _track_message(msg):
+    try:
+        chat_id = msg.chat.id
+        mid = msg.message_id
+        bucket = _TRACKED_MESSAGES.setdefault(chat_id, [])
+        if mid not in bucket:
+            bucket.append(mid)
+        if len(bucket) > _TRACKED_LIMIT:
+            del bucket[:-_TRACKED_LIMIT]
+    except Exception:
+        pass
+    return msg
+
+async def _delete_stale_messages(bot, chat_id, keep_id=None):
+    ids = list(_TRACKED_MESSAGES.get(chat_id, []))
+    if not ids:
+        return
+    kept = []
+    for mid in ids:
+        if keep_id is not None and mid == keep_id:
+            kept.append(mid)
+            continue
+        try:
+            await bot.delete_message(chat_id, mid)
+        except Exception:
+            # Message may already be deleted / too old / not deletable.
+            pass
+    _TRACKED_MESSAGES[chat_id] = kept
+
+class MessageTrackerMiddleware:
+    """Track bot replies and clear stale bot messages when a callback is clicked."""
+    async def __call__(self, handler, event, data):
+        result = await handler(event, data)
+        # We intentionally don't delete before the handler: the callback
+        # handler often edits event.message in place.
+        return result
+
 class ButtonLoadingMiddleware:
     """Show loading directly inside the clicked inline button.
 
@@ -52,16 +101,14 @@ class ButtonLoadingMiddleware:
         except Exception:
             pass
 
+        # Remove stale bot messages from previous screens while preserving
+        # the message whose button was clicked; handlers may edit it.
         try:
-            result = await handler(event, data)
-        finally:
-            # If the handler did not replace the message/keyboard, restore it.
-            # If it did, Telegram will reject this harmlessly and we leave the
-            # handler's final UI intact.
-            try:
-                await event.message.edit_reply_markup(reply_markup=original_markup)
-            except Exception:
-                pass
+            await _delete_stale_messages(event.bot, event.message.chat.id, keep_id=event.message.message_id)
+        except Exception:
+            pass
+
+        result = await handler(event, data)
         return result
 
 
