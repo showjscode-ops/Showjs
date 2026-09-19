@@ -1,6 +1,6 @@
 from aiogram import Router,F
 from aiogram.filters import CommandStart
-from aiogram.types import Message,CallbackQuery
+from aiogram.types import Message,CallbackQuery, InlineKeyboardMarkup, InlineKeyboardButton
 from database import get_pool
 from keyboards.menu import home_kb,other_menu_kb
 from utils.economy import ensure_user,is_creator
@@ -28,3 +28,38 @@ async def verify_join(c:CallbackQuery):
         await c.message.edit_text(t,parse_mode='HTML',reply_markup=home_kb())
     except Exception:
         await c.message.answer(t,parse_mode='HTML',reply_markup=home_kb())
+
+
+POINTS_HELP_TEXT = (
+    "💡 Cara mendapatkan Poin:\n"
+    "• 🎁 Check In: 0.1 Poin/hari\n"
+    "• 🎁 Hari ke-7: +1 Poin\n"
+    "• 🪙 Beli Poin agar cepat dapat membuka media\n"
+    "• ⭐️ Beli Star untuk akses media permanen"
+)
+
+
+@router.callback_query(F.data == "points_help_ok")
+async def points_help_ok(callback):
+    """Delete only the temporary Poin help message."""
+    try:
+        await callback.message.delete()
+    except Exception:
+        try:
+            await callback.answer()
+        except Exception:
+            pass
+    else:
+        try:
+            await callback.answer()
+        except Exception:
+            pass
+
+
+async def send_points_help(message):
+    kb = InlineKeyboardMarkup(
+        inline_keyboard=[
+            [InlineKeyboardButton(text="✅ OKE", callback_data="points_help_ok")]
+        ]
+    )
+    return await message.answer(POINTS_HELP_TEXT, reply_markup=kb)
