@@ -15,7 +15,7 @@ DATABASE_URL=os.getenv("DATABASE_URL","").strip()
 PUBLIC_BASE_URL=os.getenv("PUBLIC_BASE_URL","").strip().rstrip("/")
 OWNER_ID=env_int("OWNER_ID")
 CREATOR_ADMIN_ID=env_int("CREATOR_ADMIN_ID", OWNER_ID)
-ADMIN_IDS={int(x.strip()) for x in os.getenv("ADMIN_IDS","").replace(";",",").split(",") if x.strip().lstrip("-").isdigit()}
+ADMIN_IDS={int(x.strip()) for x in os.getenv("ADMIN_IDS", os.getenv("ADMINS","")).replace(";",",").split(",") if x.strip().lstrip("-").isdigit()}
 NOTIF_CHANNEL_ID=env_int("NOTIF_CHANNEL_ID")
 # Mandatory subscription channels. If IDs are empty, that channel is skipped.
 FORCE_CHANNEL_ID=env_int("FORCE_CHANNEL_ID", env_int("FORCE_CHANNEL", 0))
