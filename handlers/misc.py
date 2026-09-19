@@ -1,11 +1,42 @@
 from aiogram import Router,F
 from aiogram.types import Message, CallbackQuery, InlineKeyboardMarkup, InlineKeyboardButton
+import html
 from database import get_pool
 from utils.economy import checkin
-from config import CODE_GROUP_URL, NOTICE_CHANNEL_URL, CODE_GROUP_TITLE, NOTIF_CHANNEL_ID, BOT_USERNAME
+from config import CODE_GROUP_URL, NOTICE_CHANNEL_URL, CODE_GROUP_TITLE, NOTIF_CHANNEL_ID, BOT_USERNAME, CREATOR_ADMIN_ID
 
 from utils.callback_loading import loading
 router=Router()
+
+def _code_link(code: str) -> str:
+    return f"https://t.me/{BOT_USERNAME}?start={code}"
+
+def _safe_url(s: str) -> str:
+    return html.escape(s, quote=True)
+
+@router.callback_query(F.data=='creator_apply')
+async def creator_apply(c):
+    await loading(c)
+    admin_url=f"tg://user?id={int(CREATOR_ADMIN_ID)}" if CREATOR_ADMIN_ID else ""
+    text=(
+        "👑 <b>PROGRAM KREATOR</b>\n\n"
+        "Jadilah kreator dan buat CODE berbayar dari media kamu.\n\n"
+        "💰 <b>Biaya pendaftaran: Rp200.000</b>\n\n"
+        "📋 <b>Persyaratan & skema pengembalian:</b>\n"
+        "• Periode evaluasi: 1 bulan sejak pendaftaran.\n"
+        "• Jika berhasil menarik <b>200 member</b>: pengembalian/komisi pendaftaran <b>20%</b>.\n"
+        "• Jika berhasil menarik <b>500 member</b>: pengembalian/komisi pendaftaran <b>50%</b>.\n"
+        "• Jika berhasil menarik <b>1.000 member</b>: pengembalian/komisi pendaftaran <b>100%</b>.\n"
+        "• Jika target belum tercapai dalam periode tersebut, kamu dapat menghubungi admin untuk meminta/menanyakan persyaratan dan periode berikutnya.\n\n"
+        "⚠️ <b>Catatan:</b> target dan pengembalian mengikuti verifikasi admin.\n\n"
+        "Tekan <b>Join Kreator</b> untuk menghubungi admin dan proses pendaftaran."
+    )
+    kb=[]
+    if admin_url:
+        kb.append([InlineKeyboardButton(text="👑 Join Kreator",url=admin_url)])
+    kb.append([InlineKeyboardButton(text="🔙 Kembali",callback_data="menu_lainnya")])
+    await c.message.edit_text(text,parse_mode="HTML",reply_markup=InlineKeyboardMarkup(inline_keyboard=kb))
+
 
 @router.callback_query(F.data=='checkin')
 async def ci(c):
@@ -19,12 +50,111 @@ async def ci(c):
 
 @router.callback_query(F.data=='my_code')
 async def my(c):
-    rows=await (await get_pool()).fetch("SELECT code,title,media_count FROM files WHERE owner_id=$1 ORDER BY id DESC LIMIT 30",c.from_user.id)
-    text='📋 <b>MY CODE</b>\n\n'+(
-        '\n'.join(f'🔑 <code>{r["code"]}</code> • {r["media_count"]} media\n📝 {r["title"] or "-"}' for r in rows)
-        if rows else 'Belum ada code.'
+    rows=await (await get_pool()).fetch(
+        "SELECT code,title,media_count,views,likes,hates,favorites FROM files "
+        "WHERE owner_id=$1 AND active=TRUE ORDER BY id DESC LIMIT 30", c.from_user.id
     )
-    await loading(c); await c.message.edit_text(text,parse_mode='HTML',reply_markup=InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text='🔙 Kembali',callback_data='menu_lainnya')]]))
+    text='📋 <b>MY CODE</b>\n\n'
+    kb=[]
+    if rows:
+        for r in rows:
+            title=html.escape((r['title'] or 'Untitled')[:45])
+            text += f"📝 <b>{title}</b>\n🔑 <code>{html.escape(r['code'])}</code> • {r['media_count']} media\n"
+            text += f"👁 {r['views']} • 👍 {r['likes']} • 👎 {r['hates']} • ⭐ {r['favorites']}\n\n"
+            kb.append([InlineKeyboardButton(text=f"📝 {title}", callback_data=f"browsecode:{r['code']}")])
+    else:
+        text+='Belum ada code.'
+    kb.append([InlineKeyboardButton(text='🔙 Kembali',callback_data='menu_lainnya')])
+    await loading(c)
+    await c.message.edit_text(text,parse_mode='HTML',reply_markup=InlineKeyboardMarkup(inline_keyboard=kb))
+
+async def _all_codes_page(page:int=0, per_page:int=10):
+    p=await get_pool()
+    offset=max(0,page)*per_page
+    rows=await p.fetch(
+        "SELECT code,title,media_count,views,likes,hates,favorites,price_idr "
+        "FROM files WHERE active=TRUE ORDER BY id DESC LIMIT $1 OFFSET $2",
+        per_page, offset
+    )
+    total=await p.fetchval("SELECT COUNT(*) FROM files WHERE active=TRUE")
+    return rows,int(total or 0)
+
+def _code_list_kb(rows,page,total,per_page=10):
+    kb=[]
+    for r in rows:
+        title=(r['title'] or 'Untitled')[:45]
+        kb.append([InlineKeyboardButton(text=f"📝 {title}",url=_code_link(r['code']))])
+    nav=[]
+    pages=max(1,(total+per_page-1)//per_page)
+    if page>0: nav.append(InlineKeyboardButton(text='⬅️',callback_data=f'codepage:{page-1}'))
+    nav.append(InlineKeyboardButton(text=f'📄 {page+1}/{pages}',callback_data='noop'))
+    if page<pages-1: nav.append(InlineKeyboardButton(text='➡️',callback_data=f'codepage:{page+1}'))
+    if nav: kb.append(nav)
+    kb.append([InlineKeyboardButton(text='🔙 Kembali',callback_data='home')])
+    return InlineKeyboardMarkup(inline_keyboard=kb)
+
+async def _render_all_codes(c,page=0,edit=False):
+    rows,total=await _all_codes_page(page)
+    text='🔑 <b>ALL CODE</b>\n\n'
+    if not rows:
+        text+='Belum ada code yang dibuat.'
+    else:
+        for r in rows:
+            title=html.escape((r['title'] or 'Untitled')[:50])
+            price=int(r['price_idr'] or 0)
+            paid=f" • 💰 Rp{price:,}".replace(',','.') if price else " • 🆓"
+            text += f"📝 <b>{title}</b>{paid}\n"
+            text += f"👁 {r['views']} • 👍 {r['likes']} • 👎 {r['hates']} • ⭐ {r['favorites']}\n\n"
+        text += "Klik <b>Judul</b> untuk mencari/membuka media yang terhubung dengan CODE tersebut."
+    kb=_code_list_kb(rows,page,total)
+    if edit:
+        await c.message.edit_text(text,parse_mode='HTML',reply_markup=kb)
+    else:
+        await c.message.answer(text,parse_mode='HTML',reply_markup=kb)
+
+@router.callback_query(F.data=='code_all')
+async def code_all(c):
+    await loading(c)
+    await _render_all_codes(c,0,edit=True)
+
+@router.callback_query(F.data.startswith('codepage:'))
+async def codepage(c):
+    await loading(c)
+    try: page=int(c.data.split(':',1)[1])
+    except: page=0
+    await _render_all_codes(c,page,edit=True)
+
+@router.callback_query(F.data.startswith('browsecode:'))
+async def browsecode(c):
+    await loading(c)
+    code=c.data.split(':',1)[1]
+    p=await get_pool()
+    f=await p.fetchrow(
+        "SELECT code,title,media_count,views,likes,hates,favorites,price_idr "
+        "FROM files WHERE lower(code)=lower($1) AND active=TRUE", code
+    )
+    if not f:
+        return await c.answer('❌ Code tidak ditemukan.',show_alert=True)
+    price=int(f['price_idr'] or 0)
+    paid=f"💰 Harga: <b>Rp{price:,}</b>".replace(',','.') if price else "🆓 <b>FREE CODE</b>"
+    await c.message.edit_text(
+        f"📝 <a href=\"{_safe_url(_code_link(f['code']))}\"><b>{html.escape(f['title'] or 'Untitled')}</b></a>\n\n"
+        f"🔑 <code>{html.escape(f['code'])}</code>\n"
+        f"📦 Media: <b>{f['media_count']}</b>\n{paid}\n\n"
+        f"👁 Total View: <b>{f['views']}</b>\n"
+        f"👍 Total Like: <b>{f['likes']}</b>\n"
+        f"👎 Total Hate: <b>{f['hates']}</b>\n"
+        f"⭐ Total Favorit: <b>{f['favorites']}</b>\n\n"
+        "Klik <b>Buka Code</b> untuk mencari dan membuka media yang terhubung.",
+        parse_mode='HTML',
+        reply_markup=InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(text='📥 Buka Code',callback_data=f'getcode:{f["code"]}')],
+            [InlineKeyboardButton(text='👍 Like',callback_data=f'react:like:{f["code"]}'),
+             InlineKeyboardButton(text='👎 Hate',callback_data=f'react:hate:{f["code"]}'),
+             InlineKeyboardButton(text='⭐ Favorit',callback_data=f'react:favorite:{f["code"]}')],
+            [InlineKeyboardButton(text='🔙 Semua Code',callback_data='code_all')]
+        ])
+    )
 
 @router.callback_query(F.data=='group_code')
 async def group(c):

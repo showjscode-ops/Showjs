@@ -30,6 +30,7 @@ async def show(m,code):
     f=await get_file(code)
     if not f:return await m.answer('❌ Code tidak valid.')
     p=await get_pool()
+    await p.execute("UPDATE files SET views=views+1 WHERE code=$1", code)
     stats=await p.fetchrow("""SELECT views,likes,hates,favorites FROM files WHERE id=$1""",f['id'])
     price=int(f['price_idr'] or 0)
     paid=f"💰 Harga: <b>{fmt(price)}</b>" if price else "🆓 FREE CODE"
@@ -52,6 +53,7 @@ async def getcode(c):
     await loading(c); code=c.data.split(':',1)[1]; f=await get_file(code)
     if not f:return await c.answer('❌ Code tidak ditemukan.',show_alert=True)
     await c.answer()
+    await (await get_pool()).execute("UPDATE files SET views=views+1 WHERE code=$1", code)
     await open_choices(c,code,f)
 
 async def open_choices(c,code,f):

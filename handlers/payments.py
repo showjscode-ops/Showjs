@@ -13,6 +13,16 @@ class ManualProofState(StatesGroup):
     proof=State()
     qris=State()
 
+async def is_admin_user(uid):
+    # Accept OWNER_ID / ADMINS from Railway and DB is_admin.
+    if int(uid) == int(OWNER_ID or 0) or int(uid) in ADMIN_IDS:
+        return True
+    try:
+        p = await get_pool()
+        return bool(await p.fetchval("SELECT COALESCE(is_admin,FALSE) FROM users WHERE user_id=$1::BIGINT", int(uid)))
+    except Exception:
+        return False
+
 def admin(uid): return uid==OWNER_ID or uid in ADMIN_IDS
 def fmt(n): return f"Rp{int(n):,}".replace(',','.')
 

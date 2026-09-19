@@ -11,10 +11,36 @@ from utils.callback_loading import loading
 import html,asyncio,re
 
 router=Router()
+
+@router.message(Command('admin'))
+async def admin_command(m):
+    if not await admin_access(m.from_user.id):
+        return await m.answer('❌ Kamu tidak memiliki akses admin.')
+    p=await get_pool()
+    try:
+        users=await p.fetchval("SELECT COUNT(*) FROM users")
+        codes=await p.fetchval("SELECT COUNT(*) FROM files WHERE active=TRUE")
+        pending=await p.fetchval("SELECT COUNT(*) FROM manual_deposits WHERE status='pending'")
+    except Exception:
+        users=codes=pending=0
+    await m.answer(
+        f"👑 <b>ADMIN PANEL</b>\n\n👥 Users: <b>{users}</b>\n🔑 Active Code: <b>{codes}</b>\n🧾 Manual Pending: <b>{pending}</b>",
+        parse_mode='HTML',
+        reply_markup=admin_kb()
+    )
 class AdminState(StatesGroup):
     creator=State(); broadcast=State(); edit_code=State(); edit_title=State(); edit_tags=State(); edit_price=State(); user_action=State(); move=State()
 
 def admin(uid): return uid==OWNER_ID or uid in ADMIN_IDS
+
+async def admin_access(uid):
+    if admin(uid):
+        return True
+    try:
+        p=await get_pool()
+        return bool(await p.fetchval("SELECT COALESCE(is_admin,FALSE) FROM users WHERE user_id=$1::BIGINT", int(uid)))
+    except Exception:
+        return False
 async def val(key): return str(await (await get_pool()).fetchval("SELECT value FROM settings WHERE key=$1",key) or "off")
 async def setval(key,value): await (await get_pool()).execute("INSERT INTO settings(key,value) VALUES($1,$2) ON CONFLICT(key) DO UPDATE SET value=EXCLUDED.value",key,str(value))
 

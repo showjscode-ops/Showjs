@@ -18,6 +18,23 @@ async def dashboard_text(uid):
 @router.message(CommandStart())
 async def start(m):
  await ensure_user(m.from_user.id,m.from_user.username,m.from_user.full_name)
+ # Telegram deep-link: https://t.me/<bot>?start=<CODE>
+ parts=(m.text or '').split(maxsplit=1)
+ if len(parts)==2 and parts[1].strip():
+  code=parts[1].strip()
+  p=await get_pool()
+  f=await p.fetchrow("SELECT code,title,media_count,views,likes,hates,favorites,price_idr FROM files WHERE lower(code)=lower($1) AND active=TRUE",code)
+  if f:
+   import html as _html
+   price=int(f['price_idr'] or 0)
+   paid=(f"💰 Harga: <b>Rp{price:,}</b>".replace(',','.')) if price else "🆓 <b>FREE CODE</b>"
+   await m.answer(
+    f"📝 <b>{_html.escape(f['title'] or 'Untitled')}</b>\n\n"
+    f"🔑 <code>{_html.escape(f['code'])}</code>\n"
+    f"📦 Media: <b>{f['media_count']}</b>\n{paid}\n\n"
+    f"👁 View: <b>{f['views']}</b> • 👍 <b>{f['likes']}</b> • 👎 <b>{f['hates']}</b> • ⭐ <b>{f['favorites']}</b>",
+    parse_mode='HTML',reply_markup=InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text='📥 Buka Code',callback_data=f'getcode:{f["code"]}')]]))
+   return
  t,_=await dashboard_text(m.from_user.id); await send_points_help(m); await m.answer(t,parse_mode='HTML',reply_markup=home_kb())
 
 @router.callback_query(F.data=='home')
