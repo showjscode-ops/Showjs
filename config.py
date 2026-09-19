@@ -57,3 +57,12 @@ POINT_PACKAGES={25:5000,50:10000,75:13000,100:15000,200:20000}
 STAR_PACKAGES={1:10000,2:15000,3:17000,5:20000}
 TRIAL_POINTS=2.0
 TRIAL_STARS=2.0
+
+
+# Simple dashboard help text for Poin (available to handlers that use it).
+POINTS_DASHBOARD_HELP = (
+    "💡 Cara mendapatkan Poin:\n"
+    "• 🎁 Check In: 0.1 Poin/hari, hari ke-7 +1 Poin\n"
+    "• 🪙 Beli Poin melalui menu Buy Poin\n"
+    "• 👑 Creator: bonus Poin dari transaksi CODE"
+)
