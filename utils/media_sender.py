@@ -1,9 +1,9 @@
 from __future__ import annotations
 import os
 from aiogram.types import FSInputFile
-from utils.google_drive import drive_pool
+from utils.b2_storage import b2_pool
 async def deliver_one(bot,chat_id,media,caption=None):
-    path,meta=await drive_pool.download(int(media["drive_account"]),str(media["drive_file_id"]))
+    path,meta=await b2_pool.download(int(media["drive_account"]),str(media["drive_file_id"]))
     try:
         typ=str(media.get("type") or "document").lower(); inp=FSInputFile(path)
         if typ=="photo": return await bot.send_photo(chat_id,inp,caption=caption)
