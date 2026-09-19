@@ -46,12 +46,25 @@ async def subscription_prompt(bot, chat_id: int, user_id: int):
     missing = await missing_subscription_channels(bot, user_id)
     if not missing:
         return True
+
+    # Always show both required channels so the user can clearly see the
+    # complete Force-Sub requirement. The verification step decides which
+    # channel is still missing.
     rows = []
-    for label, url in missing:
-        if url:
+    channels = [
+        ("📢 Channel Saluran", _url(FORCE_CHANNEL_URL, FORCE_CHANNEL_USERNAME, FORCE_CHANNEL_ID), FORCE_CHANNEL_ID),
+        ("🔔 Notic Saluran", _url(NOTICE_SUB_CHANNEL_URL, NOTICE_SUB_CHANNEL_USERNAME, NOTICE_SUB_CHANNEL_ID), NOTICE_SUB_CHANNEL_ID),
+    ]
+    for label, url, chat_id_value in channels:
+        if chat_id_value and url:
             rows.append([InlineKeyboardButton(text=label, url=url)])
-    rows.append([InlineKeyboardButton(text="✅ Saya Sudah Join", callback_data="verify_join")])
-    text = "⚠️ <b>Wajib Join Dulu</b>\n\nSilakan masuk ke channel yang belum kamu join/yang kamu sudah keluar, lalu tekan <b>Saya Sudah Join</b>."
+
+    rows.append([InlineKeyboardButton(text="🔄 Verifikasi Join", callback_data="verify_join")])
+    text = (
+        "⚠️ <b>WAJIB JOIN DULU</b>\n\n"
+        "Silakan join <b>kedua channel</b> di bawah.\n"
+        "Setelah selesai, tekan <b>Verifikasi Join</b>."
+    )
     await bot.send_message(chat_id, text, reply_markup=InlineKeyboardMarkup(inline_keyboard=rows))
     return False
 
