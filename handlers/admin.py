@@ -5,12 +5,37 @@ from aiogram.types import Message,CallbackQuery,InlineKeyboardMarkup,InlineKeybo
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import StatesGroup,State
 from database import get_pool
-from config import OWNER_ID,ADMIN_IDS,TRIAL_POINTS,TRIAL_STARS,PAID_CODE_MIN_IDR,PAID_CODE_MAX_IDR
+from config import ADMIN_IDS,TRIAL_POINTS,TRIAL_STARS,PAID_CODE_MIN_IDR,PAID_CODE_MAX_IDR
+from utils.admin_access import admin_access, is_config_admin, admin_env_debug
 from utils.b2_storage import b2_pool
 from utils.callback_loading import loading
 import html,asyncio,re
 
 router=Router()
+
+@router.message(Command("admincheck"))
+async def admincheck(m):
+    d=admin_env_debug(m.from_user.id)
+    db=False
+    try:
+        p=await get_pool()
+        row=await p.fetchrow("SELECT COALESCE(is_admin,FALSE) AS is_admin FROM users WHERE user_id=$1::BIGINT",int(m.from_user.id))
+        db=bool(row and row["is_admin"])
+    except Exception as e:
+        await m.answer(f"⚠️ DB admin check error: <code>{html.escape(str(e)[:300])}</code>",parse_mode="HTML")
+        return
+    access=d["is_admin_env"] or db
+    await m.answer(
+        "🔎 <b>ADMIN CHECK</b>\n\n"
+        f"🆔 ID: <code>{d['user_id']}</code>\n"
+        f"🔐 ENV: <b>{'YES' if d['is_admin_env'] else 'NO'}</b>\n"
+        f"🗄 DB is_admin: <b>{'YES' if db else 'NO'}</b>\n"
+        f"👑 Access: <b>{'YES' if access else 'NO'}</b>\n\n"
+        f"OWNER_ID: <code>{html.escape(d['owner_id'] or '-')}</code>\n"
+        f"ADMINS: <code>{html.escape(d['admins'] or '-')}</code>\n"
+        f"ADMIN_IDS: <code>{html.escape(d['admin_ids'] or '-')}</code>",
+        parse_mode="HTML",
+    )
 
 @router.message(Command('admin'))
 async def admin_command(m):
@@ -31,16 +56,7 @@ async def admin_command(m):
 class AdminState(StatesGroup):
     creator=State(); broadcast=State(); edit_code=State(); edit_title=State(); edit_tags=State(); edit_price=State(); user_action=State(); move=State()
 
-def admin(uid): return uid==OWNER_ID or uid in ADMIN_IDS
-
-async def admin_access(uid):
-    if admin(uid):
-        return True
-    try:
-        p=await get_pool()
-        return bool(await p.fetchval("SELECT COALESCE(is_admin,FALSE) FROM users WHERE user_id=$1::BIGINT", int(uid)))
-    except Exception:
-        return False
+def admin(uid): return is_config_admin(uid)
 async def val(key): return str(await (await get_pool()).fetchval("SELECT value FROM settings WHERE key=$1",key) or "off")
 async def setval(key,value): await (await get_pool()).execute("INSERT INTO settings(key,value) VALUES($1,$2) ON CONFLICT(key) DO UPDATE SET value=EXCLUDED.value",key,str(value))
 
@@ -54,11 +70,14 @@ def kb():
   [InlineKeyboardButton(text='🔄 Refresh',callback_data='adm:panel')]])
 
 async def panel_text():
- p=await get_pool()
- users=await p.fetchval("SELECT COUNT(*) FROM users") or 0
- codes=await p.fetchval("SELECT COUNT(*) FROM files WHERE active") or 0
- pending=await p.fetchval("SELECT COUNT(*) FROM manual_deposits WHERE status='pending'") or 0
- return f"👑 <b>ADMIN PANEL</b>\n\n👥 Users: <b>{users}</b>\n🔑 Active Code: <b>{codes}</b>\n🧾 Manual Pending: <b>{pending}</b>\n\nB2: <b>{len(b2_pool.accounts)}/10</b>"
+    p=await get_pool()
+    async def count(sql):
+        try: return await p.fetchval(sql) or 0
+        except Exception: return 0
+    users=await count("SELECT COUNT(*) FROM users")
+    codes=await count("SELECT COUNT(*) FROM files WHERE active=TRUE")
+    pending=await count("SELECT COUNT(*) FROM manual_deposits WHERE status='pending'")
+    return f"👑 <b>ADMIN PANEL</b>\n\n👥 Users: <b>{users}</b>\n🔑 Active Code: <b>{codes}</b>\n🧾 Manual Pending: <b>{pending}</b>\n\n🗄 B2: <b>{len(b2_pool.accounts)}/10</b>"
 
 @router.message(Command('panel'))
 async def panel(m):
@@ -88,6 +107,7 @@ async def admtoggle(c):
 
 @router.callback_query(F.data=='adm:control')
 async def control(c):
+ if not await admin_access(c.from_user.id): return await c.answer('No access',show_alert=True)
  rows=[]
  for key,label in [('maintenance','🛠 Maintenance'),('trial_enabled','🧪 Trial')]:
   rows.append([InlineKeyboardButton(text=f'{label}: {(await val(key)).upper()}',callback_data=f'admtoggle2:{key}')])
@@ -189,7 +209,12 @@ async def users(c):
  try: page=int(c.data.split(':')[2]) if len(c.data.split(':'))>2 else 0
  except: page=0
  off=page*15; rows=await (await get_pool()).fetch("SELECT user_id,username,balance,points,stars,vip,banned,is_creator FROM users ORDER BY last_seen DESC LIMIT 15 OFFSET $1",off)
- text=f'👥 <b>USERS</b> • Page {page+1}\n\n'+('\n'.join(f"🆔 <code>{r['user_id']}</code> @{html.escape(r['username'] or '-')} • Rp{int(r['balance'] or 0):,} • {'VIP' if r['vip'] else 'FREE'} {'🚫' if r['banned'] else ''}" for r in rows).replace(',','.') if rows else 'Tidak ada user.')
+ lines=[]
+ for r in rows:
+  plan='VIP' if r['vip'] else 'FREE'
+  ban=' 🚫' if r['banned'] else ''
+  lines.append(f"🆔 <code>{r['user_id']}</code> @{html.escape(r['username'] or '-')} • Rp{int(r['balance'] or 0):,} • {plan}{ban}")
+ text=f'👥 <b>USERS</b> • Page {page+1}\n\n'+('\n'.join(lines).replace(',','.') if lines else 'Tidak ada user.')
  nav=[]
  if page>0:nav.append(InlineKeyboardButton(text='⬅️',callback_data=f'adm:users:{page-1}'))
  if len(rows)==15:nav.append(InlineKeyboardButton(text='➡️',callback_data=f'adm:users:{page+1}'))
@@ -221,7 +246,7 @@ async def broadcast(m,state):
 
 @router.message(Command('editcode'))
 async def editcode(m,state):
- if not admin(m.from_user.id):return
+ if not await admin_access(m.from_user.id):return
  code=(m.text or '').split(maxsplit=1)[1] if len((m.text or '').split(maxsplit=1))>1 else ''
  if not code:return await m.answer('Format: /editcode CODE')
  r=await (await get_pool()).fetchrow("SELECT title,tags,price_idr FROM files WHERE code=$1",code)
@@ -236,7 +261,7 @@ async def edit_title(m,state):
 
 @router.message(Command('deletecode'))
 async def deletecode(m):
- if not admin(m.from_user.id):return
+ if not await admin_access(m.from_user.id):return
  parts=(m.text or '').split(maxsplit=1)
  if len(parts)<2:return await m.answer('/deletecode CODE')
  r=await (await get_pool()).fetchrow("UPDATE files SET active=FALSE WHERE code=$1 RETURNING code",parts[1].strip())
@@ -244,12 +269,12 @@ async def deletecode(m):
 
 @router.message(Command('broadcast'))
 async def broadcast_cmd(m,state):
- if not admin(m.from_user.id):return
+ if not await admin_access(m.from_user.id):return
  await state.set_state(AdminState.broadcast); await m.answer('📢 Kirim pesan yang akan dibroadcast.')
 
 @router.message(Command('grantcreator'))
 async def grantcreator(m):
- if not admin(m.from_user.id):return
+ if not await admin_access(m.from_user.id):return
  parts=(m.text or '').split()
  if len(parts)!=2:return await m.answer('/grantcreator USER_ID')
  r=await (await get_pool()).fetchrow("UPDATE users SET is_creator=TRUE,creator_status='approved' WHERE user_id=$1 RETURNING user_id",int(parts[1]))
@@ -257,7 +282,7 @@ async def grantcreator(m):
 
 @router.message(Command('user'))
 async def user_action(m):
- if not admin(m.from_user.id):return
+ if not await admin_access(m.from_user.id):return
  parts=(m.text or '').split()
  if len(parts)<3:return await m.answer('/user USER_ID vip|creator|admin|ban|unban|unlock')
  uid=int(parts[1]); action=parts[2].lower(); p=await get_pool()
