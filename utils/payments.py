@@ -1,4 +1,5 @@
-import uuid,base64,binascii
+
+import uuid,base64,binascii,json
 from io import BytesIO
 import qrcode
 from aiogram.types import BufferedInputFile
@@ -6,7 +7,6 @@ from database import get_pool
 from config import BAYARGG_WEBHOOK_URL
 from utils.bayargg import BayarGG
 from utils.cashi import Cashi
-from utils.notify_channel import notify
 
 def qr_bytes(value):
     value=str(value or "")
@@ -14,16 +14,22 @@ def qr_bytes(value):
         try:return base64.b64decode(value.split(',',1)[1],validate=True)
         except (ValueError,binascii.Error):return None
     buf=BytesIO(); qrcode.make(value).save(buf,format="PNG"); return buf.getvalue()
+
 async def enabled(provider):
-    p=await get_pool(); return str(await p.fetchval("SELECT value FROM settings WHERE key=$1",f"payment_{provider}_enabled") or "off").lower() in {"on","1","true","yes"}
-async def create_purchase(uid,typ,qty,amount,provider,name):
+    return str(await (await get_pool()).fetchval("SELECT value FROM settings WHERE key=$1",f"payment_{provider}_enabled") or "off").lower() in {"on","1","true","yes"}
+
+async def create_purchase(uid,typ,qty,amount,provider,name,metadata=None):
     if not await enabled(provider): return None,"disabled"
     order=f"{provider.upper()}-{uuid.uuid4().hex}"
-    if provider=="bayargg": r=await BayarGG.create_payment(amount,f"{typ}:{qty}",BAYARGG_WEBHOOK_URL,name)
-    else: r=await Cashi.create_payment(amount,f"{typ}:{qty}",name)
+    desc=f"{typ}:{qty}"
+    if metadata and metadata.get("code"): desc=f"file:{metadata['code']}"
+    r=await (BayarGG.create_payment(amount,desc,BAYARGG_WEBHOOK_URL,name) if provider=="bayargg" else Cashi.create_payment(amount,desc,name))
     if not r:return None,"provider_error"
-    p=await get_pool(); await p.execute("INSERT INTO purchases(user_id,purchase_type,quantity,amount,provider,order_id,invoice_id) VALUES($1,$2,$3,$4,$5,$6,$7)",uid,typ,qty,amount,provider,order,r["invoice_id"])
+    p=await get_pool()
+    await p.execute("""INSERT INTO purchases(user_id,purchase_type,quantity,amount,provider,order_id,invoice_id,metadata)
+    VALUES($1,$2,$3,$4,$5,$6,$7,$8::jsonb)""",uid,typ,qty,amount,provider,order,r["invoice_id"],json.dumps(metadata or {}))
     return r,"ok"
+
 async def finalize_purchase(invoice,status_amount=None):
     p=await get_pool()
     async with p.acquire() as c:
@@ -31,25 +37,40 @@ async def finalize_purchase(invoice,status_amount=None):
         row=await c.fetchrow("SELECT * FROM purchases WHERE invoice_id=$1 FOR UPDATE",str(invoice))
         if not row:return False
         if row["status"]=="paid":return True
-        if status_amount is not None and int(status_amount)!=int(row["amount"]): return False
+        if status_amount is not None and int(status_amount)!=int(row["amount"]):return False
         await c.execute("UPDATE purchases SET status='paid',paid_at=NOW() WHERE id=$1",row["id"])
-        if row["purchase_type"]=="points":
-            await c.execute("UPDATE users SET points=points+$1 WHERE user_id=$2",row["quantity"],row["user_id"])
-            text=f"💰 PEMBELIAN POIN\n\n🆔 ID: {row['user_id']}\n🪙 Paket: {row['quantity']:g} Poin\n💵 Harga: Rp{int(row['amount']):,}\n💳 Status: PAID".replace(',','.')
-        elif row["purchase_type"]=="stars":
-            await c.execute("UPDATE users SET stars=stars+$1 WHERE user_id=$2",row["quantity"],row["user_id"])
-            text=f"⭐ PEMBELIAN STAR\n\n🆔 ID: {row['user_id']}\n⭐ Paket: {row['quantity']:g} Star\n💵 Harga: Rp{int(row['amount']):,}\n💳 Status: PAID".replace(',','.')
-        else:
-            from datetime import timedelta
-            await c.execute("UPDATE users SET vip=TRUE,vip_until=NOW()+($1 || ' days')::interval WHERE user_id=$2",int(row["quantity"]),row["user_id"])
-            text=f"💎 PEMBELIAN VIP\n\n🆔 ID: {row['user_id']}\n💎 Paket: {row['quantity']:g} Hari\n💵 Harga: Rp{int(row['amount']):,}\n💳 Status: PAID".replace(',','.')
+        typ=row["purchase_type"]; uid=row["user_id"]; qty=row["quantity"]; meta=row["metadata"] or {}
+        if typ=="points":
+            await c.execute("UPDATE users SET points=points+$1 WHERE user_id=$2",qty,uid)
+        elif typ=="stars":
+            await c.execute("UPDATE users SET stars=stars+$1 WHERE user_id=$2",qty,uid)
+        elif typ=="vip":
+            await c.execute("UPDATE users SET vip=TRUE,vip_until=GREATEST(COALESCE(vip_until,NOW()),NOW())+($1||' days')::interval WHERE user_id=$2",int(qty),uid)
+        elif typ=="deposit":
+            await c.execute("UPDATE users SET balance=balance+$1 WHERE user_id=$2",row["amount"],uid)
+        elif typ=="file":
+            code=str(meta.get("code") or "")
+            f=await c.fetchrow("SELECT owner_id,price_idr FROM files WHERE code=$1 AND active=TRUE FOR UPDATE",code)
+            if not f: return False
+            price=int(f["price_idr"] or row["amount"])
+            if price!=int(row["amount"]): return False
+            creator_id=int(f["owner_id"]); income=price*0.20
+            await c.execute("UPDATE files SET views=views+1 WHERE code=$1",code)
+            await c.execute("UPDATE users SET total_unlocks=total_unlocks+1 WHERE user_id=$2",uid)
+            if creator_id!=uid:
+                await c.execute("UPDATE users SET earnings=earnings+$1,total_sales=total_sales+1,points=points+1 WHERE user_id=$2",income,creator_id)
+            await c.execute("""INSERT INTO unlock_transactions(user_id,creator_id,code,payment_type,amount,creator_reward_points,creator_income_idr,expires_at)
+            VALUES($1,$2,$3,'qr',$4,1,$5,NOW()+INTERVAL '100 years')""",uid,creator_id,code,price,income)
     try:
         from bot import bot
-        await notify(bot,text)
-        try:
-            await bot.send_message(int(row["user_id"]), "✅ Pembayaran berhasil. Saldo/paket sudah masuk otomatis.")
-        except Exception:
-            pass
+        from aiogram.types import InlineKeyboardMarkup,InlineKeyboardButton
+        if typ=='file':
+            await bot.send_message(int(uid),f'✅ <b>Payment successful</b>\n\n🔑 Code: <code>{meta.get("code")}</code>\n📥 Tekan tombol untuk membuka media.',parse_mode='HTML',reply_markup=InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text='📥 Buka Code',callback_data=f'getcode:{meta.get("code")}')]]))
+        elif typ=='deposit':
+            bal=await p.fetchval("SELECT balance FROM users WHERE user_id=$1",uid)
+            await bot.send_message(int(uid),f'✅ Deposit berhasil.\n💰 Saldo sekarang: <b>Rp{int(bal or 0):,}</b>'.replace(',','.'),parse_mode='HTML')
+        else:
+            await bot.send_message(int(uid),'✅ Pembayaran berhasil. Saldo/paket sudah masuk otomatis.')
     except Exception:
         pass
-    return text
+    return True

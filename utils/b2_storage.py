@@ -154,11 +154,19 @@ class B2Pool:
                         "B2_REGION, B2_BUCKET, B2_KEY_ID and "
                         "B2_APPLICATION_KEY."
                     )
-                ordered = [
-                    self.accounts[(self._cursor + n) % len(self.accounts)]
-                    for n in range(len(self.accounts))
-                ]
-                self._cursor = (self._cursor + 1) % len(self.accounts)
+                preferred = 0
+                try:
+                    from database import fetchval
+                    preferred = int(await fetchval("SELECT value FROM settings WHERE key='preferred_b2_account'") or 0)
+                except Exception:
+                    preferred = 0
+                pool = self.accounts
+                if preferred and any(a.account_id == preferred for a in pool):
+                    start = next(i for i,a in enumerate(pool) if a.account_id == preferred)
+                    ordered = [pool[(start+n)%len(pool)] for n in range(len(pool))]
+                else:
+                    ordered = [pool[(self._cursor+n)%len(pool)] for n in range(len(pool))]
+                    self._cursor = (self._cursor+1)%len(pool)
 
             last = None
             for account in ordered:
@@ -267,6 +275,37 @@ class B2Pool:
         except Exception:
             logger.exception("Backblaze B2 delete failed")
             return False
+
+    async def health(self, account_id):
+        account=self._account(account_id)
+        started=__import__("time").perf_counter()
+        await asyncio.to_thread(account.client.head_bucket,Bucket=account.bucket)
+        ms=round((__import__("time").perf_counter()-started)*1000,1)
+        return {"account_id":account.account_id,"bucket":account.bucket,"region":account.region,"endpoint":account.endpoint,"latency_ms":ms,"ok":True}
+
+    async def stats(self, account_id):
+        account=self._account(account_id)
+        total=0; count=0
+        def run():
+            nonlocal total,count
+            paginator=account.client.get_paginator("list_objects_v2")
+            for page in paginator.paginate(Bucket=account.bucket):
+                for obj in page.get("Contents",[]):
+                    count += 1; total += int(obj.get("Size") or 0)
+        await asyncio.to_thread(run)
+        return {"account_id":account.account_id,"bucket":account.bucket,"objects":count,"bytes":total}
+
+    async def move_object(self, from_account_id, to_account_id, object_key):
+        src=self._account(from_account_id); dst=self._account(to_account_id)
+        if src.account_id==dst.account_id: return True
+        await asyncio.to_thread(
+            dst.client.copy_object,
+            CopySource={"Bucket":src.bucket,"Key":str(object_key)},
+            Bucket=dst.bucket,Key=str(object_key)
+        )
+        await asyncio.to_thread(dst.client.head_object,Bucket=dst.bucket,Key=str(object_key))
+        await asyncio.to_thread(src.client.delete_object,Bucket=src.bucket,Key=str(object_key))
+        return True
 
 
 b2_pool = B2Pool()

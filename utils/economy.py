@@ -1,11 +1,22 @@
+
 from decimal import Decimal
 from datetime import datetime,timedelta,timezone,date
 from database import get_pool
 from config import POINT_UNLOCK_HOURS,STAR_UNLOCK_HOURS,STAR_PER_MEDIA,CREATOR_POINT_DISCOUNT,CREATOR_SHARE_PERCENT
+
 async def ensure_user(uid,username=None,name=None):
-    p=await get_pool(); await p.execute("""INSERT INTO users(user_id,username,full_name) VALUES($1,$2,$3) ON CONFLICT(user_id) DO UPDATE SET username=EXCLUDED.username,full_name=EXCLUDED.full_name,last_seen=NOW()""",uid,username,name)
+    p=await get_pool()
+    await p.execute("""INSERT INTO users(user_id,username,full_name) VALUES($1,$2,$3)
+    ON CONFLICT(user_id) DO UPDATE SET username=EXCLUDED.username,full_name=EXCLUDED.full_name,last_seen=NOW()""",uid,username,name)
+
 async def is_creator(uid):
-    p=await get_pool(); return bool(await p.fetchval("SELECT is_creator AND creator_status='approved' FROM users WHERE user_id=$1",uid) or False)
+    p=await get_pool()
+    return bool(await p.fetchval("SELECT is_creator AND creator_status='approved' FROM users WHERE user_id=$1",uid) or False)
+
+async def is_vip(uid):
+    p=await get_pool()
+    return bool(await p.fetchval("SELECT vip AND (vip_until IS NULL OR vip_until>NOW()) FROM users WHERE user_id=$1",uid) or False)
+
 async def checkin(uid):
     p=await get_pool(); today=date.today()
     async with p.acquire() as c:
@@ -20,30 +31,61 @@ async def checkin(uid):
             await c.execute("INSERT INTO point_transactions(user_id,amount,type,reference) VALUES($1,$2,'checkin',$3) ON CONFLICT(reference) DO NOTHING",uid,reward,f"checkin:{uid}:{today}")
             bal=await c.fetchval("SELECT points FROM users WHERE user_id=$1",uid)
             return Decimal(str(bal)),streak,True
+
+async def vip_allowed(uid,code):
+    if not await is_vip(uid): return True
+    p=await get_pool()
+    r=await p.fetchval("SELECT opened_at FROM code_cooldowns WHERE user_id=$1 AND code=$2",uid,code)
+    if not r: return True
+    try: minutes=int(await p.fetchval("SELECT value FROM settings WHERE key='vip_code_delay_minutes'") or 30)
+    except: minutes=30
+    return datetime.now(timezone.utc)-r.replace(tzinfo=timezone.utc) >= timedelta(minutes=minutes)
+
 async def unlock(uid,code,media_count,method):
     p=await get_pool()
     async with p.acquire() as c:
         async with c.transaction():
-            f=await c.fetchrow("SELECT owner_id,code_value_idr,active FROM files WHERE lower(code)=lower($1) FOR UPDATE",code)
+            f=await c.fetchrow("SELECT owner_id,code_value_idr,price_idr,active FROM files WHERE lower(code)=lower($1) FOR UPDATE",code)
             if not f or not f["active"]: return False,Decimal(0),"notfound",0
-            creator_user=await c.fetchrow("SELECT is_creator,creator_status FROM users WHERE user_id=$1",uid)
-            creator=bool(creator_user and creator_user["is_creator"] and creator_user["creator_status"]=="approved")
+            user=await c.fetchrow("SELECT * FROM users WHERE user_id=$1 FOR UPDATE",uid)
+            if not user or user["banned"] or not user["can_unlock"]: return False,Decimal(0),"blocked",0
+            vip=bool(user["vip"] and (user["vip_until"] is None or user["vip_until"]>datetime.now(timezone.utc)))
+            if vip:
+                if not await vip_allowed(uid,code): return False,Decimal(0),"cooldown",0
+                await c.execute("""INSERT INTO code_cooldowns(user_id,code) VALUES($1,$2)
+                    ON CONFLICT(user_id,code) DO UPDATE SET opened_at=NOW()""",uid,code)
+                await c.execute("UPDATE files SET views=views+1 WHERE code=$1",f["code"])
+                return True,Decimal(0),"vip",0
+            price=Decimal(str(f["price_idr"] or 0))
+            if price>0:
+                if method!="balance": return False,Decimal(str(user["balance"] or 0)),"paid_balance_only",price
+                bal=Decimal(str(user["balance"] or 0))
+                if bal<price: return False,bal,"insufficient",price
+                await c.execute("UPDATE users SET balance=balance-$1,total_unlocks=total_unlocks+1 WHERE user_id=$2",price,uid)
+                creator_id=int(f["owner_id"]); income=(price*Decimal(str(CREATOR_SHARE_PERCENT))/100).quantize(Decimal("0.01"))
+                if creator_id!=uid:
+                    await c.execute("UPDATE users SET earnings=earnings+$1,total_sales=total_sales+1,points=points+1 WHERE user_id=$2",income,creator_id)
+                await c.execute("UPDATE files SET views=views+1 WHERE code=$1",code)
+                await c.execute("""INSERT INTO unlock_transactions(user_id,creator_id,code,payment_type,amount,creator_reward_points,creator_income_idr,expires_at)
+                    VALUES($1,$2,$3,'balance',$4,1,$5,NOW()+INTERVAL '100 years')""",uid,creator_id,code,price,income)
+                return True,bal-price,"permanent",price
+            creator=bool(user["is_creator"] and user["creator_status"]=="approved")
             if method=="points":
                 cost=(Decimal(media_count)*Decimal("0.5") if creator else Decimal(media_count)).quantize(Decimal("0.01")); hours=POINT_UNLOCK_HOURS
-            else:
+            elif method=="star":
                 cost=(Decimal(media_count)*Decimal(str(STAR_PER_MEDIA))).quantize(Decimal("0.01")); hours=STAR_UNLOCK_HOURS
-            balcol="points" if method=="points" else "stars"
-            bal=Decimal(str(await c.fetchval(f"SELECT {balcol} FROM users WHERE user_id=$1 FOR UPDATE",uid) or 0))
-            if bal<cost: return False,bal,"insufficient",cost
-            await c.execute(f"UPDATE users SET {balcol}={balcol}-$1 WHERE user_id=$2",cost,uid)
-            expires=datetime.now(timezone.utc)+timedelta(hours=hours)
-            creator_id=int(f["owner_id"])
-            value=Decimal(str(f["code_value_idr"] or 0))
-            income=(value*Decimal(str(CREATOR_SHARE_PERCENT))/Decimal(100)).quantize(Decimal("0.01"))
-            await c.execute("""INSERT INTO unlock_transactions(user_id,creator_id,code,payment_type,amount,creator_reward_points,creator_income_idr,expires_at) VALUES($1,$2,$3,$4,$5,1,$6,$7)""",uid,creator_id,code,method,cost,income,expires)
-            await c.execute("UPDATE users SET total_unlocks=total_unlocks+1 WHERE user_id=$1",uid)
+            else:
+                return False,Decimal(0),"invalid_method",0
+            bal=Decimal(str(user["points"] if method=="points" else user["stars"] or 0))
+            if bal<cost:return False,bal,"insufficient",cost
+            col="points" if method=="points" else "stars"
+            await c.execute(f"UPDATE users SET {col}={col}-$1,total_unlocks=total_unlocks+1 WHERE user_id=$2",cost,uid)
+            creator_id=int(f["owner_id"]); value=Decimal(str(f["code_value_idr"] or 0))
+            income=(value*Decimal(str(CREATOR_SHARE_PERCENT))/100).quantize(Decimal("0.01"))
+            exp=datetime.now(timezone.utc)+timedelta(hours=POINT_UNLOCK_HOURS if method=="points" else STAR_UNLOCK_HOURS)
+            await c.execute("""INSERT INTO unlock_transactions(user_id,creator_id,code,payment_type,amount,creator_reward_points,creator_income_idr,expires_at)
+                VALUES($1,$2,$3,$4,$5,1,$6,$7)""",uid,creator_id,code,method,cost,income,exp)
             if creator_id!=uid:
-                await c.execute("UPDATE users SET points=points+1 WHERE user_id=$1",creator_id)
-                await c.execute("INSERT INTO point_transactions(user_id,amount,type,reference) VALUES($1,1,'unlock_reward',$2)",creator_id,f"unlock:{uid}:{code}:{method}:{datetime.now(timezone.utc).timestamp()}")
-                await c.execute("UPDATE users SET earnings=earnings+$1,total_sales=total_sales+1 WHERE user_id=$2",income,creator_id)
+                await c.execute("UPDATE users SET points=points+1,earnings=earnings+$1,total_sales=total_sales+1 WHERE user_id=$2",income,creator_id)
+            await c.execute("UPDATE files SET views=views+1 WHERE code=$1",code)
             return True,bal-cost,"ok",cost
