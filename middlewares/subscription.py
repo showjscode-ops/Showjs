@@ -75,6 +75,13 @@ class SubscriptionMiddleware(BaseMiddleware):
             return await handler(event, data)
         if user.id == OWNER_ID or user.id in ADMIN_IDS:
             return await handler(event, data)
+        # Admin-entry commands must reach the admin handler even when the
+        # user has not joined the required channels, otherwise /admin can
+        # appear completely silent to a misconfigured admin account.
+        if isinstance(event, Message):
+            command = (event.text or '').strip().split()[0].lower() if event.text else ''
+            if command in {'/admin', '/panel', '/getqrisid'}:
+                return await handler(event, data)
         # Only enforce subscriptions in private chat.
         chat = getattr(event, "chat", None)
         if chat is not None and getattr(chat, "type", None) != "private":
