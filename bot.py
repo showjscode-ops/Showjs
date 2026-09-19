@@ -114,6 +114,29 @@ class ButtonLoadingMiddleware:
 
 dp.callback_query.middleware(ButtonLoadingMiddleware())
 
+class MaintenanceMiddleware:
+    async def __call__(self, handler, event, data):
+        try:
+            from database import get_pool
+            from config import OWNER_ID,ADMIN_IDS
+            uid=getattr(getattr(event,'from_user',None),'id',0)
+            if uid and (uid==OWNER_ID or uid in ADMIN_IDS):
+                return await handler(event,data)
+            maintenance=str(await (await get_pool()).fetchval("SELECT value FROM settings WHERE key='maintenance'") or 'off').lower()
+            if maintenance=='on':
+                if isinstance(event, CallbackQuery):
+                    await event.answer('🛠 Bot sedang maintenance.',show_alert=True)
+                else:
+                    await event.answer('🛠 Bot sedang maintenance. Silakan coba lagi nanti.')
+                return
+        except Exception:
+            pass
+        return await handler(event,data)
+
+dp.message.middleware(MaintenanceMiddleware())
+dp.callback_query.middleware(MaintenanceMiddleware())
+
+
 from handlers.start import router as start
 from handlers.upfile import router as up
 from handlers.getfile import router as getf

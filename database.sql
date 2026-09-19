@@ -26,7 +26,9 @@ ALTER TABLE users ADD COLUMN IF NOT EXISTS subscription_notice_at TIMESTAMPTZ;
 
 CREATE TABLE IF NOT EXISTS settings(key TEXT PRIMARY KEY,value TEXT NOT NULL DEFAULT '');
 INSERT INTO settings(key,value) VALUES
- ('payment_bayargg_enabled','on'),('payment_cashi_enabled','on'),('trial_enabled','on'),('withdraw_enabled','on'),('maintenance','off')
+ ('payment_bayargg_enabled','on'),('payment_cashi_enabled','on'),('payment_manual_enabled','on'),('payment_balance_enabled','on'),
+ ('trial_enabled','on'),('withdraw_enabled','on'),('maintenance','off'),('vip_code_delay_minutes','30'),('media_send_delay_ms','250'),
+ ('manual_qr_file_id',''),('preferred_b2_account','0')
  ON CONFLICT(key) DO NOTHING;
 
 CREATE TABLE IF NOT EXISTS admins(user_id BIGINT PRIMARY KEY,role TEXT NOT NULL DEFAULT 'admin',created_at TIMESTAMPTZ DEFAULT NOW());
@@ -108,6 +110,26 @@ CREATE TABLE IF NOT EXISTS vip_packages(
 INSERT INTO vip_packages(code,name,price,duration_days) VALUES
  ('vip1','VIP 1 Hari',20000,1),('vip3','VIP 3 Hari',40000,3),('vip5','VIP 5 Hari',60000,5),('vip7','VIP 7 Hari',80000,7),('vip10','VIP 10 Hari',100000,10),('vip15','VIP 15 Hari',130000,15)
  ON CONFLICT(code) DO NOTHING;
+
+ALTER TABLE users ADD COLUMN IF NOT EXISTS balance NUMERIC(18,2) NOT NULL DEFAULT 0;
+ALTER TABLE users ADD COLUMN IF NOT EXISTS banned BOOLEAN NOT NULL DEFAULT FALSE;
+ALTER TABLE users ADD COLUMN IF NOT EXISTS can_unlock BOOLEAN NOT NULL DEFAULT TRUE;
+ALTER TABLE files ADD COLUMN IF NOT EXISTS tags TEXT[] NOT NULL DEFAULT ARRAY[]::TEXT[];
+ALTER TABLE files ADD COLUMN IF NOT EXISTS price_idr NUMERIC(18,2) NOT NULL DEFAULT 0;
+ALTER TABLE files ADD COLUMN IF NOT EXISTS views BIGINT NOT NULL DEFAULT 0;
+ALTER TABLE files ADD COLUMN IF NOT EXISTS likes BIGINT NOT NULL DEFAULT 0;
+ALTER TABLE files ADD COLUMN IF NOT EXISTS hates BIGINT NOT NULL DEFAULT 0;
+ALTER TABLE files ADD COLUMN IF NOT EXISTS favorites BIGINT NOT NULL DEFAULT 0;
+ALTER TABLE purchases ADD COLUMN IF NOT EXISTS metadata JSONB NOT NULL DEFAULT '{}'::jsonb;
+
+CREATE TABLE IF NOT EXISTS code_reactions(user_id BIGINT REFERENCES users(user_id) ON DELETE CASCADE,code TEXT REFERENCES files(code) ON DELETE CASCADE,reaction TEXT CHECK(reaction IN('like','hate','favorite')),created_at TIMESTAMPTZ DEFAULT NOW(),PRIMARY KEY(user_id,code,reaction));
+CREATE TABLE IF NOT EXISTS code_cooldowns(user_id BIGINT REFERENCES users(user_id) ON DELETE CASCADE,code TEXT NOT NULL,opened_at TIMESTAMPTZ DEFAULT NOW(),PRIMARY KEY(user_id,code));
+CREATE TABLE IF NOT EXISTS manual_deposits(id BIGSERIAL PRIMARY KEY,user_id BIGINT REFERENCES users(user_id) ON DELETE CASCADE,amount NUMERIC(18,2) NOT NULL,proof_file_id TEXT,proof_type TEXT,target_code TEXT,target_type TEXT,quantity NUMERIC(18,2) DEFAULT 0,status TEXT NOT NULL DEFAULT 'pending',admin_id BIGINT,note TEXT,created_at TIMESTAMPTZ DEFAULT NOW(),processed_at TIMESTAMPTZ);
+CREATE TABLE IF NOT EXISTS error_logs(id BIGSERIAL PRIMARY KEY,level TEXT DEFAULT 'ERROR',source TEXT,message TEXT,user_id BIGINT,created_at TIMESTAMPTZ DEFAULT NOW());
+CREATE TABLE IF NOT EXISTS b2_storage_moves(id BIGSERIAL PRIMARY KEY,code TEXT,from_account INT,to_account INT,moved_count INT DEFAULT 0,status TEXT DEFAULT 'pending',error TEXT,created_at TIMESTAMPTZ DEFAULT NOW(),finished_at TIMESTAMPTZ);
+ALTER TABLE manual_deposits ADD COLUMN IF NOT EXISTS target_code TEXT;
+CREATE INDEX IF NOT EXISTS idx_code_reactions_code ON code_reactions(code);
+CREATE INDEX IF NOT EXISTS idx_manual_deposits_status ON manual_deposits(status,created_at);
 
 CREATE INDEX IF NOT EXISTS idx_users_creator ON users(is_creator,creator_status);
 CREATE INDEX IF NOT EXISTS idx_users_last_seen ON users(last_seen DESC);

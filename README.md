@@ -1,9 +1,9 @@
-# Pastele / ShowjsBot — Google Drive + Poin + Star
+# Pastele / ShowjsBot — Backblaze B2 + Poin + Star
 
 ## Storage
-- Semua media dari Up File otomatis di Google Drive.
-- Bisa memakai 1 sampai 10 Google Drive.
-- `GOOGLE_DRIVE_1_JSON` + `GOOGLE_DRIVE_1_FOLDER_ID` saja sudah cukup.
+- Semua media dari Up File otomatis di Backblaze B2.
+- Bisa memakai 1 sampai 10 Backblaze B2.
+- `B2_1_JSON` + `B2_1_FOLDER_ID` saja sudah cukup.
 - Nanti Drive 2–10 dapat ditambahkan tanpa mengubah source.
 - Supabase/PostgreSQL menyimpan CODE, user, transaksi, saldo, Creator, dan metadata.
 - Railway hanya menjalankan bot.
@@ -79,7 +79,7 @@ Subscription watcher mengecek user aktif secara berkala dan mengirim pengingat.
 ## Setup
 1. Jalankan `database.sql` di Supabase.
 2. Isi `.env` berdasarkan `.env.example`.
-3. Share folder Google Drive ke service account.
+3. Share folder Backblaze B2 ke service account.
 4. Deploy ke Railway.
 5. Pastikan bot memiliki akses yang diperlukan ke channel subscription dan group CODE.
 
@@ -102,7 +102,7 @@ The subscription prompt displays both mandatory channels:
 Verification still requires membership in both configured channels.
 
 ## Content-Range upload fix
-The Google Drive uploader now creates an immutable local snapshot before
+The Backblaze B2 uploader now creates an immutable local snapshot before
 starting resumable upload, verifies its size, starts a fresh resumable session
 for each retry, and verifies the remote file size after upload. This prevents
 Content-Range final-size mismatches when the original temporary file changes.
@@ -118,23 +118,27 @@ Dashboard help text requested:
 The intended OK button should delete the help message when pressed.
 
 ## Final fixes
-- Google Drive resumable upload now uses an immutable snapshot.
+- Backblaze B2 resumable upload now uses an immutable snapshot.
 - Each retry starts a new resumable session, preventing Content-Range
   final-size mismatches caused by a changing temporary source file.
 - Dashboard Poin help text is prepared with an OKE callback that deletes the
   temporary help message.
 
 ## Railway SSL / Segmentation Fault fix
-Google Drive upload no longer uses googleapiclient/httplib2 for upload,
+Backblaze B2 upload no longer uses googleapiclient/httplib2 for upload,
 download, or metadata requests. It uses google-auth AuthorizedSession and the
 Drive REST resumable upload API directly. This avoids the httplib2/SSL stack
 that caused the Railway Python 3.12 segmentation fault.
 
 OAuth variables are preferred:
-GOOGLE_DRIVE_1_CLIENT_ID
-GOOGLE_DRIVE_1_CLIENT_SECRET
-GOOGLE_DRIVE_1_REFRESH_TOKEN
-GOOGLE_DRIVE_1_FOLDER_ID
+B2_1_CLIENT_ID
+B2_1_CLIENT_SECRET
+B2_1_REFRESH_TOKEN
+B2_1_FOLDER_ID
 
 Dashboard starts with a separate Poin help message above the Dashboard.
 The OK button deletes only that help message.
+
+## Syntax fix
+Fixed the malformed multiline POINTS_HELP_TEXT string in handlers/start.py.
+All Python files were syntax-compiled successfully before packaging.
