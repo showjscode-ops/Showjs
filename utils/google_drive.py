@@ -73,99 +73,136 @@ class DrivePool:
         raise RuntimeError(f"Google Drive account {account} unavailable")
 
     async def upload(self, path, filename, mime):
-        async with self._lock:
-            ordered = (
-                [
-                    self.services[(self._cursor + i) % len(self.services)]
-                    for i in range(len(self.services))
+        """Upload an immutable snapshot using a fresh resumable session per retry."""
+        import os
+        import shutil
+        import tempfile
+
+        if not os.path.isfile(path):
+            raise FileNotFoundError(path)
+
+        expected = os.path.getsize(path)
+        if expected <= 0:
+            raise RuntimeError("Cannot upload an empty file")
+
+        fd, snapshot = tempfile.mkstemp(prefix="drive_snapshot_", suffix=".bin")
+        os.close(fd)
+        try:
+            # Snapshot prevents the Telegram temp file from changing during upload.
+            await asyncio.to_thread(shutil.copyfile, path, snapshot)
+            snap_size = os.path.getsize(snapshot)
+            if snap_size != expected:
+                raise RuntimeError(
+                    f"Snapshot size mismatch: source={expected}, snapshot={snap_size}"
+                )
+
+            async with self._lock:
+                if not self.services:
+                    raise RuntimeError(
+                        "No Google Drive configured. Configure "
+                        "GOOGLE_DRIVE_1_CLIENT_ID, GOOGLE_DRIVE_1_CLIENT_SECRET, "
+                        "GOOGLE_DRIVE_1_REFRESH_TOKEN and GOOGLE_DRIVE_1_FOLDER_ID."
+                    )
+                ordered = [
+                    self.services[(self._cursor + n) % len(self.services)]
+                    for n in range(len(self.services))
                 ]
-                if self.services
-                else []
-            )
-            if self.services:
                 self._cursor = (self._cursor + 1) % len(self.services)
 
-        if not ordered:
-            raise RuntimeError("No Google Drive configured")
+            last = None
+            for idx, svc, folder in ordered:
+                for attempt in range(1, UPLOAD_RETRIES + 1):
+                    try:
+                        # Every attempt creates a brand-new resumable session.
+                        def run(current_svc=svc, current_folder=folder):
+                            body = {"name": filename}
+                            if current_folder:
+                                body["parents"] = [current_folder]
 
-        last = None
-
-        for idx, svc, folder in ordered:
-            for attempt in range(1, UPLOAD_RETRIES + 1):
-                try:
-                    # A fresh resumable request is created for every retry.
-                    # This avoids reusing a broken SSL/HTTP connection.
-                    def run(current_svc=svc, current_folder=folder):
-                        body = {"name": filename}
-                        if current_folder:
-                            body["parents"] = [current_folder]
-
-                        media = MediaFileUpload(
-                            path,
-                            mimetype=mime or "application/octet-stream",
-                            resumable=True,
-                            chunksize=UPLOAD_CHUNK_SIZE,
-                        )
-
-                        request = current_svc.files().create(
-                            body=body,
-                            media_body=media,
-                            fields="id,name,size,mimeType",
-                        )
-
-                        response = None
-                        while response is None:
-                            _, response = request.next_chunk(
-                                num_retries=2
+                            media = MediaFileUpload(
+                                snapshot,
+                                mimetype=mime or "application/octet-stream",
+                                resumable=True,
+                                chunksize=UPLOAD_CHUNK_SIZE,
+                            )
+                            req = current_svc.files().create(
+                                body=body,
+                                media_body=media,
+                                fields="id,name,size,mimeType",
                             )
 
-                        return response
+                            response = None
+                            while response is None:
+                                _, response = req.next_chunk(num_retries=0)
+                            return response
 
-                    result = await asyncio.to_thread(run)
+                        result = await asyncio.to_thread(run)
 
-                    # Confirm the file is visible to the same Drive service.
-                    verified = await asyncio.to_thread(
-                        lambda: svc.files()
-                        .get(
-                            fileId=result["id"],
-                            fields="id,name,size,mimeType",
+                        verified = await asyncio.to_thread(
+                            lambda: svc.files().get(
+                                fileId=result["id"],
+                                fields="id,name,size,mimeType",
+                            ).execute()
                         )
-                        .execute()
-                    )
+                        remote_size = int(verified.get("size") or 0)
+                        if remote_size != snap_size:
+                            raise RuntimeError(
+                                f"Drive size mismatch: local={snap_size}, "
+                                f"remote={remote_size}"
+                            )
 
-                    logger.info(
-                        "Drive %s upload success: id=%s name=%s",
-                        idx,
-                        verified.get("id"),
-                        verified.get("name"),
-                    )
-                    return idx, verified["id"], verified
+                        logger.info(
+                            "Drive %s upload success: id=%s size=%s",
+                            idx, verified.get("id"), remote_size
+                        )
+                        return idx, verified["id"], verified
 
-                except Exception as e:
-                    last = e
-                    logger.warning(
-                        "Drive %s upload attempt %s/%s failed: %s",
-                        idx,
-                        attempt,
-                        UPLOAD_RETRIES,
-                        repr(e),
-                    )
-
-                    # Rebuild the HTTP/service object after transport/SSL
-                    # failures. This is especially useful on Railway.
-                    try:
-                        svc, folder = self._rebuild_service(idx)
-                    except Exception:
-                        logger.exception(
-                            "Drive %s service rebuild failed", idx
+                    except Exception as exc:
+                        last = exc
+                        low = str(exc).lower()
+                        logger.warning(
+                            "Drive %s upload attempt %s/%s failed: %s",
+                            idx, attempt, UPLOAD_RETRIES, exc
                         )
 
-                    if attempt < UPLOAD_RETRIES:
-                        await asyncio.sleep(min(2 ** (attempt - 1), 8))
+                        deterministic = any(x in low for x in (
+                            "storagequotaexceeded",
+                            "service accounts do not have storage quota",
+                            "invalid_grant",
+                            "unauthorized_client",
+                            "invalid_client",
+                        ))
+                        if deterministic:
+                            break
 
-            logger.error("Drive %s upload failed after retries", idx)
+                        # Content-Range mismatch = discard the session and
+                        # start a completely new session on the next attempt.
+                        if "content-range" in low or "final size" in low:
+                            logger.warning(
+                                "Drive %s Content-Range mismatch; "
+                                "discarding resumable session.",
+                                idx
+                            )
 
-        raise last or RuntimeError("Drive upload failed")
+                        if attempt < UPLOAD_RETRIES:
+                            try:
+                                svc, folder = await asyncio.to_thread(
+                                    self._rebuild_service, idx
+                                )
+                            except Exception:
+                                logger.exception(
+                                    "Drive %s service rebuild failed", idx
+                                )
+                            await asyncio.sleep(min(2 ** (attempt - 1), 8))
+
+                logger.error("Drive %s upload failed", idx)
+
+            raise last or RuntimeError("Drive upload failed")
+        finally:
+            try:
+                os.remove(snapshot)
+            except OSError:
+                pass
 
     async def download(self, account, file_id):
         svc = self._service(account)
