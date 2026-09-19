@@ -26,7 +26,7 @@ async def admin_command(m):
     await m.answer(
         f"👑 <b>ADMIN PANEL</b>\n\n👥 Users: <b>{users}</b>\n🔑 Active Code: <b>{codes}</b>\n🧾 Manual Pending: <b>{pending}</b>",
         parse_mode='HTML',
-        reply_markup=admin_kb()
+        reply_markup=kb()
     )
 class AdminState(StatesGroup):
     creator=State(); broadcast=State(); edit_code=State(); edit_title=State(); edit_tags=State(); edit_price=State(); user_action=State(); move=State()
