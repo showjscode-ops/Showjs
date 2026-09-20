@@ -96,7 +96,11 @@ async def provider(c):
   return await c.answer('❌ Provider sedang ditutup oleh admin.', show_alert=True)
  r,status=await create_purchase(c.from_user.id, typ, qty_i, amount_i, provider_name, c.from_user.full_name)
  if not r:
-  msg = '❌ Pembayaran sedang ditutup.' if status == 'disabled' else '❌ Gagal membuat pembayaran. Coba lagi.'
+  msg = (
+   '❌ Pembayaran sedang ditutup.' if status == 'disabled'
+   else '❌ Nominal BayarGG harus Rp5.000–Rp500.000.' if status == 'invalid_amount'
+   else '❌ Gagal membuat pembayaran. Coba lagi.'
+  )
   return await c.answer(msg, show_alert=True)
  data=qr_bytes(r.get('qr_string')); text=f'💳 <b>PAYMENT</b>\n\n📦 {qty_i}\n💰 {fmt(amount_i)}\n🏦 {provider_name.upper()}\n🧾 <code>{r["invoice_id"]}</code>'
  kb=InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text='🔄 Cek Pembayaran',callback_data=f'paycheck:{r["invoice_id"]}')],[InlineKeyboardButton(text='❌ Batal',callback_data=f'paycancel:{r["invoice_id"]}')]])
