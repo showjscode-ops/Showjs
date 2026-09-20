@@ -120,6 +120,8 @@ ALTER TABLE files ADD COLUMN IF NOT EXISTS views BIGINT NOT NULL DEFAULT 0;
 ALTER TABLE files ADD COLUMN IF NOT EXISTS likes BIGINT NOT NULL DEFAULT 0;
 ALTER TABLE files ADD COLUMN IF NOT EXISTS hates BIGINT NOT NULL DEFAULT 0;
 ALTER TABLE files ADD COLUMN IF NOT EXISTS favorites BIGINT NOT NULL DEFAULT 0;
+-- Media JSONB entries now retain telegram_file_id and telegram_file_unique_id as fallback metadata.
+
 ALTER TABLE purchases ADD COLUMN IF NOT EXISTS metadata JSONB NOT NULL DEFAULT '{}'::jsonb;
 
 CREATE TABLE IF NOT EXISTS code_reactions(user_id BIGINT REFERENCES users(user_id) ON DELETE CASCADE,code TEXT REFERENCES files(code) ON DELETE CASCADE,reaction TEXT CHECK(reaction IN('like','hate','favorite')),created_at TIMESTAMPTZ DEFAULT NOW(),PRIMARY KEY(user_id,code,reaction));
@@ -151,3 +153,34 @@ ALTER TABLE purchases ADD COLUMN IF NOT EXISTS payment_message_id BIGINT;
 ALTER TABLE purchases ADD COLUMN IF NOT EXISTS expires_at TIMESTAMPTZ;
 ALTER TABLE manual_deposits ADD COLUMN IF NOT EXISTS qr_message_id BIGINT;
 ALTER TABLE manual_deposits ADD COLUMN IF NOT EXISTS proof_message_id BIGINT;
+
+
+-- V24 creator economy / manual unlock / role controls
+ALTER TABLE users ADD COLUMN IF NOT EXISTS creator_last_paid_upload_date DATE;
+ALTER TABLE users ADD COLUMN IF NOT EXISTS creator_paid_upload_count_today INT NOT NULL DEFAULT 0;
+ALTER TABLE users ADD COLUMN IF NOT EXISTS creator_extra_opens NUMERIC(18,2) NOT NULL DEFAULT 0;
+ALTER TABLE users ADD COLUMN IF NOT EXISTS creator_previous BOOLEAN NOT NULL DEFAULT FALSE;
+
+CREATE TABLE IF NOT EXISTS creator_daily_opens(
+ user_id BIGINT NOT NULL REFERENCES users(user_id) ON DELETE CASCADE,
+ open_date DATE NOT NULL,
+ used_count INT NOT NULL DEFAULT 0,
+ PRIMARY KEY(user_id,open_date)
+);
+CREATE INDEX IF NOT EXISTS idx_creator_daily_opens_date ON creator_daily_opens(open_date);
+
+ALTER TABLE unlock_transactions DROP CONSTRAINT IF EXISTS unlock_transactions_payment_type_check;
+ALTER TABLE unlock_transactions ADD CONSTRAINT unlock_transactions_payment_type_check
+ CHECK(payment_type IN('points','star','balance','qr','creator_points','admin'));
+
+CREATE INDEX IF NOT EXISTS idx_unlock_creator_paid_members ON unlock_transactions(creator_id,payment_type,user_id);
+
+INSERT INTO settings(key,value) VALUES
+ ('creator_daily_base_paid_opens','1'),
+ ('creator_members_per_extra_open','10'),
+ ('creator_point_discount','0.50'),
+ ('creator_registration_fee_idr','200000'),
+ ('creator_renewal_percent','30'),
+ ('paid_code_min_idr','2000'),
+ ('paid_code_max_idr','2000000')
+ ON CONFLICT(key) DO NOTHING;
