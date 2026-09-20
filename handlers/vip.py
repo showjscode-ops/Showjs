@@ -29,9 +29,10 @@ async def pay(c):
  result,status=await create_purchase(c.from_user.id,'vip',r['duration_days'],r['price'],provider,c.from_user.full_name)
  if not result:return await c.answer('❌ Pembayaran ditutup atau gagal.',show_alert=True)
  data=qr_bytes(result.get('qr_string')); await c.answer()
- text=f'💎 <b>{r["name"]}</b>\n💵 Rp{int(r["price"]):,}\n🏦 {provider.upper()}\n🧾 <code>{result["invoice_id"]}</code>'.replace(',','.')
- if data: await c.message.answer_photo(BufferedInputFile(data,filename='vip.png'),caption=text,parse_mode='HTML')
- else: await c.message.answer(text,parse_mode='HTML')
+ text=f'💎 <b>{r["name"]}</b>\n💵 Rp{int(r["price"]):,}\n🏦 {provider.upper()}\n🧾 <code>{result["invoice_id"]}</code>\n\nSetelah membayar, tekan Cek Pembayaran.'.replace(',','.')
+ kb=InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text='🔄 Cek Pembayaran',callback_data=f'paycheck:{result["invoice_id"]}')],[InlineKeyboardButton(text='❌ Batal',callback_data=f'paycancel:{result["invoice_id"]}')]])
+ if data: await c.message.answer_photo(BufferedInputFile(data,filename='vip.png'),caption=text,parse_mode='HTML',reply_markup=kb)
+ else: await c.message.answer(text,parse_mode='HTML',reply_markup=kb)
 
 @router.callback_query(F.data.startswith('vip_manual:'))
 async def vip_manual(c,state):

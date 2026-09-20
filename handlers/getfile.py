@@ -196,9 +196,10 @@ async def payfile(c,state):
     r,status=await create_purchase(c.from_user.id,'file',1,int(f['price_idr']),provider,c.from_user.full_name,{"code":code})
     if not r:return await c.answer('❌ Provider sedang ditutup.',show_alert=True)
     data=qr_bytes(r.get('qr_string'))
-    text=f"💳 <b>PAYMENT</b>\n\n🔑 Code: <code>{code}</code>\n💰 {fmt(f['price_idr'])}\n🏦 {provider.upper()}\n\nPayment will be verified automatically."
-    if data: await c.message.answer_photo(BufferedInputFile(data,filename='payment.png'),caption=text,parse_mode='HTML')
-    else: await c.message.answer(text,parse_mode='HTML')
+    text=f"💳 <b>PAYMENT</b>\n\n🔑 Code: <code>{code}</code>\n💰 {fmt(f['price_idr'])}\n🏦 {provider.upper()}\n🧾 <code>{r['invoice_id']}</code>\n\nSetelah membayar, tekan Cek Pembayaran."
+    kb=InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text='🔄 Cek Pembayaran',callback_data=f'paycheck:{r["invoice_id"]}')],[InlineKeyboardButton(text='❌ Batal',callback_data=f'paycancel:{r["invoice_id"]}')]])
+    if data: await c.message.answer_photo(BufferedInputFile(data,filename='payment.png'),caption=text,parse_mode='HTML',reply_markup=kb)
+    else: await c.message.answer(text,parse_mode='HTML',reply_markup=kb)
 
 @router.callback_query(F.data.startswith('page:'))
 async def page(c):

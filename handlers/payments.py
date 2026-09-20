@@ -65,7 +65,7 @@ async def deppay(c,state:FSMContext):
  r,status=await create_purchase(c.from_user.id,'deposit',1,amount,provider,c.from_user.full_name)
  if not r:return await c.answer('❌ Pembayaran sedang ditutup.',show_alert=True)
  data=qr_bytes(r.get('qr_string')); text=f'💳 <b>DEPOSIT</b>\n\n💰 {fmt(amount)}\n🏦 {provider.upper()}\n🧾 <code>{r["invoice_id"]}</code>\n\nSaldo akan masuk otomatis setelah pembayaran terverifikasi.'
- kb=InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text='💳 Buka Pembayaran',url=r['payment_url'])]]) if r.get('payment_url') else None
+ kb=InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text='🔄 Cek Pembayaran',callback_data=f'paycheck:{r["invoice_id"]}')],[InlineKeyboardButton(text='❌ Batal',callback_data=f'paycancel:{r["invoice_id"]}')]])
  if data: await c.message.answer_photo(BufferedInputFile(data,filename='deposit.png'),caption=text,parse_mode='HTML',reply_markup=kb)
  else: await c.message.answer(text,parse_mode='HTML',reply_markup=kb)
 
@@ -99,9 +99,58 @@ async def provider(c):
   msg = '❌ Pembayaran sedang ditutup.' if status == 'disabled' else '❌ Gagal membuat pembayaran. Coba lagi.'
   return await c.answer(msg, show_alert=True)
  data=qr_bytes(r.get('qr_string')); text=f'💳 <b>PAYMENT</b>\n\n📦 {qty_i}\n💰 {fmt(amount_i)}\n🏦 {provider_name.upper()}\n🧾 <code>{r["invoice_id"]}</code>'
- kb=InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text='💳 Buka Pembayaran',url=r['payment_url'])]]) if r.get('payment_url') else None
+ kb=InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text='🔄 Cek Pembayaran',callback_data=f'paycheck:{r["invoice_id"]}')],[InlineKeyboardButton(text='❌ Batal',callback_data=f'paycancel:{r["invoice_id"]}')]])
  if data: await c.message.answer_photo(BufferedInputFile(data,filename='payment.png'),caption=text,parse_mode='HTML',reply_markup=kb)
  else: await c.message.answer(text,parse_mode='HTML',reply_markup=kb)
+
+
+@router.callback_query(F.data.startswith('paycheck:'))
+async def paycheck(c):
+    invoice = c.data.split(':',1)[1].strip()
+    if not invoice:
+        return await c.answer('❌ ID pembayaran tidak valid.', show_alert=True)
+    p=await get_pool()
+    row=await p.fetchrow("SELECT * FROM purchases WHERE invoice_id=$1 AND user_id=$2", invoice, c.from_user.id)
+    if not row:
+        return await c.answer('❌ Pembayaran tidak ditemukan.', show_alert=True)
+    if row['status']=='paid':
+        return await c.answer('✅ Pembayaran sudah berhasil diproses.', show_alert=True)
+    if row['status'] in {'cancelled','canceled','failed','expired'}:
+        return await c.answer(f'❌ Pembayaran sudah {row["status"]}.', show_alert=True)
+    from utils.bayargg import BayarGG
+    from utils.cashi import Cashi
+    result = await (BayarGG.check_payment(invoice) if row['provider']=='bayargg' else Cashi.check_payment(invoice))
+    if not result:
+        return await c.answer('⚠️ Gagal mengecek pembayaran. Coba lagi.', show_alert=True)
+    status=str(result.get('status') or '').lower()
+    if status in {'paid','success','completed','settled'}:
+        from utils.payments import finalize_purchase
+        ok=await finalize_purchase(invoice, result.get('amount') or None)
+        if ok:
+            return await c.answer('✅ Pembayaran berhasil diproses!', show_alert=True)
+        return await c.answer('⚠️ Pembayaran terdeteksi berhasil, tetapi proses saldo belum selesai. Coba cek lagi.', show_alert=True)
+    if status in {'cancelled','canceled','failed','expired'}:
+        await p.execute("UPDATE purchases SET status=$1 WHERE invoice_id=$2 AND status='pending'", status, invoice)
+        return await c.answer(f'❌ Pembayaran {status}.', show_alert=True)
+    return await c.answer('⏳ Pembayaran belum diterima. Setelah transfer, tekan Cek Pembayaran lagi.', show_alert=True)
+
+@router.callback_query(F.data.startswith('paycancel:'))
+async def paycancel(c):
+    invoice = c.data.split(':',1)[1].strip()
+    p=await get_pool()
+    row=await p.fetchrow("SELECT id,status FROM purchases WHERE invoice_id=$1 AND user_id=$2",invoice,c.from_user.id)
+    if not row:
+        return await c.answer('❌ Pembayaran tidak ditemukan.', show_alert=True)
+    if row['status']=='paid':
+        return await c.answer('✅ Pembayaran sudah berhasil, tidak bisa dibatalkan.', show_alert=True)
+    if row['status']!='pending':
+        return await c.answer(f'❌ Pembayaran sudah {row["status"]}.', show_alert=True)
+    await p.execute("UPDATE purchases SET status='cancelled' WHERE id=$1 AND status='pending'",row['id'])
+    await c.answer('❌ Pembayaran dibatalkan.', show_alert=True)
+    try:
+        await c.message.edit_reply_markup(reply_markup=None)
+    except Exception:
+        pass
 
 @router.callback_query(F.data.startswith('manualpkg:'))
 async def manualpkg(c,state:FSMContext):
