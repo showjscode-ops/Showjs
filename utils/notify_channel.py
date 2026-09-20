@@ -1,5 +1,9 @@
-from config import NOTIF_CHANNEL_ID
+from config import NOTIF_CHANNEL_ID, ERROR_NOTICE_CHAT_ID
+
 async def notify(bot,text):
-    if not NOTIF_CHANNEL_ID: return
-    try: await bot.send_message(NOTIF_CHANNEL_ID,text,parse_mode="HTML")
-    except Exception: pass
+    target=ERROR_NOTICE_CHAT_ID or NOTIF_CHANNEL_ID
+    if not target: return
+    try:
+        await bot.send_message(target,text,parse_mode="HTML")
+    except Exception:
+        pass

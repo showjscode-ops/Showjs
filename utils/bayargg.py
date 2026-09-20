@@ -75,6 +75,7 @@ class BayarGG:
                 "qr_string":qr if isinstance(qr,str) else None,
                 "payment_url":str(checkout),
                 "amount":int(final_amount),
+                "expires_at":merged.get("expires_at"),
             }
         except Exception:
             log.exception("BayarGG create payment failed")
