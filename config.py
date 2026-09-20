@@ -11,6 +11,11 @@ def env_bool(name, default=False):
 
 BOT_TOKEN=os.getenv("BOT_TOKEN","").strip()
 BOT_USERNAME=os.getenv("BOT_USERNAME","Jsshowbot").lstrip("@").strip()
+# Optional Local Bot API Server. Required for Telegram-origin files above ~20 MB.
+# Example: http://telegram-bot-api:8081 or http://127.0.0.1:8081
+TELEGRAM_API_BASE=os.getenv("TELEGRAM_API_BASE","").strip().rstrip("/")
+MAX_MEDIA_SIZE_MB=max(env_int("MAX_MEDIA_SIZE_MB",100),1)
+MAX_MEDIA_SIZE_BYTES=MAX_MEDIA_SIZE_MB*1024*1024
 DATABASE_URL=os.getenv("DATABASE_URL","").strip()
 PUBLIC_BASE_URL=os.getenv("PUBLIC_BASE_URL","").strip().rstrip("/")
 OWNER_ID=env_int("OWNER_ID")

@@ -1,7 +1,9 @@
 from aiogram import Bot, Dispatcher
 from aiogram.client.default import DefaultBotProperties
+from aiogram.client.session.aiohttp import AiohttpSession
+from aiogram.client.telegram import TelegramAPIServer
 from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton, CallbackQuery
-from config import BOT_TOKEN
+from config import BOT_TOKEN, TELEGRAM_API_BASE
 from middlewares.subscription import SubscriptionMiddleware
 import asyncio
 
@@ -11,7 +13,14 @@ class TrackedBot(Bot):
         _track_message(msg)
         return msg
 
-bot = TrackedBot(BOT_TOKEN, default=DefaultBotProperties(parse_mode="HTML"))
+_session = None
+if TELEGRAM_API_BASE:
+    _session = AiohttpSession(api=TelegramAPIServer.from_base(TELEGRAM_API_BASE))
+bot = TrackedBot(
+    BOT_TOKEN,
+    session=_session,
+    default=DefaultBotProperties(parse_mode="HTML"),
+)
 dp = Dispatcher()
 dp.message.middleware(SubscriptionMiddleware())
 dp.callback_query.middleware(SubscriptionMiddleware())

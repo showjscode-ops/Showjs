@@ -128,6 +128,20 @@ CREATE TABLE IF NOT EXISTS code_reactions(user_id BIGINT REFERENCES users(user_i
 CREATE TABLE IF NOT EXISTS code_cooldowns(user_id BIGINT REFERENCES users(user_id) ON DELETE CASCADE,code TEXT NOT NULL,opened_at TIMESTAMPTZ DEFAULT NOW(),PRIMARY KEY(user_id,code));
 CREATE TABLE IF NOT EXISTS manual_deposits(id BIGSERIAL PRIMARY KEY,user_id BIGINT REFERENCES users(user_id) ON DELETE CASCADE,amount NUMERIC(18,2) NOT NULL,proof_file_id TEXT,proof_type TEXT,target_code TEXT,target_type TEXT,quantity NUMERIC(18,2) DEFAULT 0,status TEXT NOT NULL DEFAULT 'pending',admin_id BIGINT,note TEXT,created_at TIMESTAMPTZ DEFAULT NOW(),processed_at TIMESTAMPTZ);
 CREATE TABLE IF NOT EXISTS error_logs(id BIGSERIAL PRIMARY KEY,level TEXT DEFAULT 'ERROR',source TEXT,message TEXT,user_id BIGINT,created_at TIMESTAMPTZ DEFAULT NOW());
+CREATE TABLE IF NOT EXISTS b2_storage_accounts(
+ account_id INT PRIMARY KEY CHECK(account_id BETWEEN 1 AND 10),
+ name TEXT NOT NULL DEFAULT '',
+ endpoint TEXT NOT NULL,
+ region TEXT NOT NULL,
+ bucket TEXT NOT NULL,
+ key_id TEXT NOT NULL,
+ application_key TEXT NOT NULL,
+ enabled BOOLEAN NOT NULL DEFAULT TRUE,
+ created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+ updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS idx_b2_storage_accounts_enabled ON b2_storage_accounts(enabled);
+
 CREATE TABLE IF NOT EXISTS b2_storage_moves(id BIGSERIAL PRIMARY KEY,code TEXT,from_account INT,to_account INT,moved_count INT DEFAULT 0,status TEXT DEFAULT 'pending',error TEXT,created_at TIMESTAMPTZ DEFAULT NOW(),finished_at TIMESTAMPTZ);
 ALTER TABLE manual_deposits ADD COLUMN IF NOT EXISTS target_code TEXT;
 CREATE INDEX IF NOT EXISTS idx_code_reactions_code ON code_reactions(code);

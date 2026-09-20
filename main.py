@@ -4,6 +4,7 @@ from fastapi import FastAPI
 from bot import bot,dp
 from database import get_pool,close_db,init_db
 from config import ADMIN_IDS
+from utils.b2_storage import b2_pool
 from api.bayargg_webhook import router as bayar
 from api.cashi_webhook import router as cashi
 from tasks.payment_worker import worker as payment_worker
@@ -12,7 +13,7 @@ from tasks.subscription_worker import worker as subscription_worker
 logging.basicConfig(level=logging.INFO,format='%(asctime)s | %(levelname)s | %(message)s')
 @asynccontextmanager
 async def lifespan(app):
- await get_pool(); await init_db();
+ await get_pool(); await init_db(); await b2_pool.reload_from_db();
  p=await get_pool();
  try: ADMIN_IDS.update(set(int(r['user_id']) for r in await p.fetch('SELECT user_id FROM users WHERE is_admin=TRUE') if int(r['user_id'])!=0))
  except Exception: pass

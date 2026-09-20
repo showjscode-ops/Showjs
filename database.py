@@ -83,7 +83,20 @@ async def init_db():
       created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
     );
 
-    CREATE TABLE IF NOT EXISTS b2_storage_moves(
+    CREATE TABLE IF NOT EXISTS b2_storage_accounts(
+      account_id INT PRIMARY KEY CHECK(account_id BETWEEN 1 AND 10),
+      name TEXT NOT NULL DEFAULT '',
+      endpoint TEXT NOT NULL,
+      region TEXT NOT NULL,
+      bucket TEXT NOT NULL,
+      key_id TEXT NOT NULL,
+      application_key TEXT NOT NULL,
+      enabled BOOLEAN NOT NULL DEFAULT TRUE,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    );
+
+        CREATE TABLE IF NOT EXISTS b2_storage_moves(
       id BIGSERIAL PRIMARY KEY,
       code TEXT,
       from_account INT,
