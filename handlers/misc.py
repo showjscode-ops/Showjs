@@ -213,7 +213,7 @@ async def open_group_info(c):
 async def open_notice_info(c):
     await c.answer('Channel Notifikasi belum dikonfigurasi URL-nya.',show_alert=True)
 
-@router.message(F.chat.type=='private', F.text)
+@router.message(F.chat.type=='private', F.text, ~F.text.startswith('/'))
 async def keyword_help(m:Message):
     text=(m.text or '').strip().lower()
     if text in {'group','vip','video'}:

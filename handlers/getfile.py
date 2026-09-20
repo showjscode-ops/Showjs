@@ -176,6 +176,8 @@ async def openbal(c):
 async def payfile(c,state):
     _,provider,code=c.data.split(':',2); f=await get_file(code)
     if not f:return await c.answer('❌ Code tidak ditemukan.',show_alert=True)
+    if not await enabled(provider):
+        return await c.answer('❌ Metode pembayaran sedang ditutup oleh admin.',show_alert=True)
     if provider=='manual':
         qr=await (await get_pool()).fetchval("SELECT value FROM settings WHERE key='manual_qr_file_id'")
         if not qr:return await c.answer('❌ QR manual belum dipasang admin.',show_alert=True)

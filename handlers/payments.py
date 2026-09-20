@@ -47,12 +47,9 @@ async def deposit(c):
 @router.callback_query(F.data.startswith('depamt:'))
 async def depamt(c):
  amount=int(c.data.split(':')[1]); rows=[]
- if await enabled('balance_bayargg'): rows.append([InlineKeyboardButton(text='⚡ BayarGG',callback_data=f'deppay:bayargg:{amount}')])
- if await enabled('balance_cashi'): rows.append([InlineKeyboardButton(text='💳 Cashi',callback_data=f'deppay:cashi:{amount}')])
+ if await enabled('bayargg'): rows.append([InlineKeyboardButton(text='⚡ BayarGG',callback_data=f'deppay:bayargg:{amount}')])
+ if await enabled('cashi'): rows.append([InlineKeyboardButton(text='💳 Cashi',callback_data=f'deppay:cashi:{amount}')])
  if await enabled('manual'): rows.append([InlineKeyboardButton(text='🧾 QR Manual',callback_data=f'deppay:manual:{amount}')])
- # Also accept generic payment toggles for backwards compatibility.
- if await enabled('bayargg') and not any('bayargg' in str(x) for x in rows): rows.append([InlineKeyboardButton(text='⚡ BayarGG',callback_data=f'deppay:bayargg:{amount}')])
- if await enabled('cashi') and not any('cashi' in str(x) for x in rows): rows.append([InlineKeyboardButton(text='💳 Cashi',callback_data=f'deppay:cashi:{amount}')])
  rows.append([InlineKeyboardButton(text='🔙 Kembali',callback_data='deposit')])
  await c.message.edit_text(f'💳 <b>PAY DEPOSIT</b>\n\nNominal: <b>{fmt(amount)}</b>\nPilih pembayaran:',parse_mode='HTML',reply_markup=InlineKeyboardMarkup(inline_keyboard=rows))
 
