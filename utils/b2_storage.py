@@ -30,6 +30,7 @@ class B2Account:
     key_id: str
     application_key: str
     client: object
+    name: str = ""
 
 
 class B2Pool:
@@ -58,6 +59,42 @@ class B2Pool:
         prefix = "B2" if account_id == 1 else f"B2_{account_id}"
         return os.getenv(f"{prefix}_{field}", default).strip()
 
+    @staticmethod
+    def _make_account(account_id: int, endpoint: str, region: str, bucket: str,
+                      key_id: str, app_key: str, name: str = "") -> B2Account:
+        endpoint = (endpoint or "").strip().rstrip("/")
+        region = (region or "").strip()
+        bucket = (bucket or "").strip()
+        key_id = (key_id or "").strip()
+        app_key = (app_key or "").strip()
+        if not endpoint:
+            endpoint = f"https://s3.{region}.backblazeb2.com"
+        if not endpoint.startswith(("http://", "https://")):
+            endpoint = "https://" + endpoint
+        client = boto3.client(
+            "s3",
+            endpoint_url=endpoint,
+            region_name=region,
+            aws_access_key_id=key_id,
+            aws_secret_access_key=app_key,
+            config=BotoConfig(
+                signature_version="s3v4",
+                connect_timeout=30,
+                read_timeout=REQUEST_TIMEOUT,
+                retries={"max_attempts": 3, "mode": "standard"},
+            ),
+        )
+        return B2Account(
+            account_id=int(account_id),
+            endpoint=endpoint,
+            region=region,
+            bucket=bucket,
+            key_id=key_id,
+            application_key=app_key,
+            client=client,
+            name=(name or "").strip(),
+        )
+
     def _load(self):
         self.accounts.clear()
         for account_id in range(1, B2_COUNT + 1):
@@ -80,28 +117,9 @@ class B2Pool:
                 endpoint = "https://" + endpoint
 
             try:
-                client = boto3.client(
-                    "s3",
-                    endpoint_url=endpoint,
-                    region_name=region,
-                    aws_access_key_id=key_id,
-                    aws_secret_access_key=app_key,
-                    config=BotoConfig(
-                        signature_version="s3v4",
-                        connect_timeout=30,
-                        read_timeout=REQUEST_TIMEOUT,
-                        retries={"max_attempts": 3, "mode": "standard"},
-                    ),
-                )
                 self.accounts.append(
-                    B2Account(
-                        account_id=account_id,
-                        endpoint=endpoint,
-                        region=region,
-                        bucket=bucket,
-                        key_id=key_id,
-                        application_key=app_key,
-                        client=client,
+                    self._make_account(
+                        account_id, endpoint, region, bucket, key_id, app_key
                     )
                 )
                 logger.info(
@@ -110,6 +128,41 @@ class B2Pool:
                 )
             except Exception:
                 logger.exception("Backblaze B2 %s init failed", account_id)
+
+    async def reload_from_db(self):
+        """Reload storage accounts configured from the admin panel.
+        Environment variables remain as a fallback for accounts that have no
+        database row. A database row (including disabled=False) takes priority.
+        """
+        try:
+            from database import fetch
+            rows = await fetch(
+                """SELECT account_id,name,endpoint,region,bucket,key_id,application_key,enabled
+                   FROM b2_storage_accounts ORDER BY account_id"""
+            )
+        except Exception as exc:
+            logger.warning("Could not load B2 accounts from database: %s", exc)
+            return
+
+        current = {a.account_id: a for a in self.accounts}
+        for row in rows:
+            aid = int(row["account_id"])
+            current.pop(aid, None)
+            if not row["enabled"]:
+                continue
+            try:
+                current[aid] = self._make_account(
+                    aid, row["endpoint"], row["region"], row["bucket"],
+                    row["key_id"], row["application_key"], row["name"]
+                )
+                logger.info("Backblaze B2 %s loaded from admin panel: bucket=%s",
+                            aid, row["bucket"])
+            except Exception:
+                logger.exception("Backblaze B2 %s database config failed", aid)
+
+        self.accounts = [current[k] for k in sorted(current)]
+        if self._cursor >= len(self.accounts):
+            self._cursor = 0
 
     @property
     def available(self) -> bool:
