@@ -10,5 +10,6 @@ async def creator(c):
  today=await p.fetchval("SELECT COALESCE(SUM(creator_income_idr),0) FROM unlock_transactions WHERE creator_id=$1 AND created_at::date=CURRENT_DATE",c.from_user.id) or 0
  month=await p.fetchval("SELECT COALESCE(SUM(creator_income_idr),0) FROM unlock_transactions WHERE creator_id=$1 AND date_trunc('month',created_at)=date_trunc('month',NOW())",c.from_user.id) or 0
  opened=await p.fetchval("SELECT COUNT(*) FROM unlock_transactions WHERE creator_id=$1",c.from_user.id) or 0
- text=f"👑 <b>Creator</b>\n\n💰 Saldo Pendapatan\nRp {int(r['earnings'] or 0):,}\n\n💵 Pendapatan Hari Ini\nRp {int(today):,}\n\n📅 Pendapatan Bulan Ini\nRp {int(month):,}\n\n📦 Total Penjualan\n{int(r['total_sales'] or 0)}\n\n👁 Total Dibuka\n{int(opened)}".replace(',','.')
+ paid_today=bool(await p.fetchval("SELECT 1 FROM files WHERE owner_id=$1 AND price_idr>0 AND created_at::date=CURRENT_DATE LIMIT 1",c.from_user.id))
+ text=f"👑 <b>Creator</b>\n\n💰 Saldo Pendapatan\nRp {int(r['earnings'] or 0):,}\n\n💵 Pendapatan Hari Ini\nRp {int(today):,}\n\n📅 Pendapatan Bulan Ini\nRp {int(month):,}\n\n📦 Total Penjualan\n{int(r['total_sales'] or 0)}\n\n👁 Total Dibuka\n{int(opened)}\n\nPaid upload hari ini: <b>{'SUDAH' if paid_today else 'WAJIB'}</b>".replace(',','.')
  await loading(c); await c.message.edit_text(text,parse_mode='HTML',reply_markup=InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text='🔙 Kembali',callback_data='menu_lainnya')]]))

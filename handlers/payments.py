@@ -5,7 +5,7 @@ from aiogram.types import CallbackQuery,InlineKeyboardMarkup,InlineKeyboardButto
 import html
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import StatesGroup,State
-from config import POINT_PACKAGES,STAR_PACKAGES,DEPOSIT_PACKAGES,OWNER_ID,ADMIN_IDS,TRANSACTION_CHANNEL_URL
+from config import POINT_PACKAGES,STAR_PACKAGES,DEPOSIT_PACKAGES,OWNER_ID,ADMIN_IDS,TRANSACTION_CHANNEL_URL,CREATOR_REGISTRATION_FEE_IDR,CREATOR_RENEWAL_PERCENT
 from database import get_pool
 from utils.payments import create_purchase,qr_bytes,enabled
 router=Router()
@@ -48,9 +48,9 @@ async def deposit(c):
 @router.callback_query(F.data.startswith('depamt:'))
 async def depamt(c):
  amount=int(c.data.split(':')[1]); rows=[]
- if await enabled('bayargg'): rows.append([InlineKeyboardButton(text='⚡ BayarGG',callback_data=f'deppay:bayargg:{amount}')])
- if await enabled('cashi'): rows.append([InlineKeyboardButton(text='💳 Cashi',callback_data=f'deppay:cashi:{amount}')])
- if await enabled('manual'): rows.append([InlineKeyboardButton(text='🧾 QR Manual',callback_data=f'deppay:manual:{amount}')])
+ if await enabled('bayargg'): rows.append([InlineKeyboardButton(text='QR 2',callback_data=f'deppay:bayargg:{amount}')])
+ if await enabled('cashi'): rows.append([InlineKeyboardButton(text='QR 1',callback_data=f'deppay:cashi:{amount}')])
+ if await enabled('manual'): rows.append([InlineKeyboardButton(text='QR Manual',callback_data=f'deppay:manual:{amount}')])
  rows.append([InlineKeyboardButton(text='🔙 Kembali',callback_data='deposit')])
  await c.message.edit_text(f'💳 <b>PAY DEPOSIT</b>\n\nNominal: <b>{fmt(amount)}</b>\nPilih pembayaran:',parse_mode='HTML',reply_markup=InlineKeyboardMarkup(inline_keyboard=rows))
 
@@ -75,7 +75,7 @@ async def deppay(c,state:FSMContext):
     return
  r,status=await create_purchase(c.from_user.id,'deposit',1,amount,provider,c.from_user.full_name)
  if not r:return await c.answer('❌ Pembayaran sedang ditutup.',show_alert=True)
- data=qr_bytes(r.get('qr_string')); text=f'💳 <b>DEPOSIT</b>\n\n💰 {fmt(amount)}\n🏦 {provider.upper()}\n🧾 <code>{r["invoice_id"]}</code>\n\nSaldo akan masuk otomatis setelah pembayaran terverifikasi.'
+ data=qr_bytes(r.get('qr_string')); text=f'💳 <b>DEPOSIT</b>\n\n💰 {fmt(amount)}\n🏦 {"QR 2" if provider=="bayargg" else "QR 1"}\n🧾 <code>{r["invoice_id"]}</code>\n\nSaldo akan masuk otomatis setelah pembayaran terverifikasi.'
  kb=InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text='🔄 Cek Pembayaran',callback_data=f'paycheck:{r["invoice_id"]}')],[InlineKeyboardButton(text='❌ Batal',callback_data=f'paycancel:{r["invoice_id"]}')]])
  if data: await c.message.answer_photo(BufferedInputFile(data,filename='deposit.png'),caption=text,parse_mode='HTML',reply_markup=kb)
  else: await c.message.answer(text,parse_mode='HTML',reply_markup=kb)
@@ -84,16 +84,19 @@ async def deppay(c,state:FSMContext):
 @router.callback_query(F.data=='creator_buy')
 async def creator_buy(c):
     rows=[]
-    if await enabled('bayargg'): rows.append([InlineKeyboardButton(text='⚡ BayarGG',callback_data='creatorpay:bayargg')])
-    if await enabled('cashi'): rows.append([InlineKeyboardButton(text='💳 Cashi',callback_data='creatorpay:cashi')])
-    if await enabled('manual'): rows.append([InlineKeyboardButton(text='🧾 QR Manual',callback_data='creatorpay:manual')])
+    if await enabled('bayargg'): rows.append([InlineKeyboardButton(text='QR 2',callback_data='creatorpay:bayargg')])
+    if await enabled('cashi'): rows.append([InlineKeyboardButton(text='QR 1',callback_data='creatorpay:cashi')])
+    if await enabled('manual'): rows.append([InlineKeyboardButton(text='QR Manual',callback_data='creatorpay:manual')])
     rows.append([InlineKeyboardButton(text='🔙 Kembali',callback_data='creator_apply')])
-    await c.message.edit_text('👑 <b>PEMBAYARAN CREATOR</b>\n\nBiaya pendaftaran: <b>Rp200.000</b>\n\nPilih metode pembayaran:',parse_mode='HTML',reply_markup=InlineKeyboardMarkup(inline_keyboard=rows))
+    await c.message.edit_text('👑 <b>PEMBAYARAN CREATOR</b>\n\nBiaya Creator: <b>Rp200.000</b> jika baru, atau <b>30% (Rp60.000)</b> untuk akun Creator sebelumnya.\n\nPilih metode pembayaran:',parse_mode='HTML',reply_markup=InlineKeyboardMarkup(inline_keyboard=rows))
 
 @router.callback_query(F.data.startswith('creatorpay:'))
 async def creatorpay(c,state:FSMContext):
     provider=c.data.split(':',1)[1]
-    amount=200000
+    p0=await get_pool()
+    existing=await p0.fetchrow("SELECT creator_status,creator_previous FROM users WHERE user_id=$1",c.from_user.id)
+    base=int(CREATOR_REGISTRATION_FEE_IDR)
+    amount=int(base*CREATOR_RENEWAL_PERCENT/100) if existing and (existing['creator_previous'] or existing['creator_status']=='approved') else base
     if not await enabled(provider):
         return await c.answer('❌ Metode pembayaran sedang ditutup oleh admin.',show_alert=True)
     if provider=='manual':
@@ -112,7 +115,7 @@ async def creatorpay(c,state:FSMContext):
     if not r:
         return await c.answer('❌ Gagal membuat pembayaran. Coba lagi.',show_alert=True)
     data=qr_bytes(r.get('qr_string'))
-    text=f'👑 <b>CREATOR PAYMENT</b>\n\n💰 Rp200.000\n🏦 {provider.upper()}\n🧾 <code>{r["invoice_id"]}</code>\n\nSetelah membayar, tekan Cek Pembayaran.'
+    text=f'👑 <b>CREATOR PAYMENT</b>\n\n💰 Rp{amount:,}'.replace(',', '.')+f'\n🏦 {"QR 2" if provider=="bayargg" else "QR 1"}\n🧾 <code>{r["invoice_id"]}</code>\n\nSetelah membayar, tekan Cek Pembayaran.'
     kb=InlineKeyboardMarkup(inline_keyboard=[
       [InlineKeyboardButton(text='🔄 Cek Pembayaran',callback_data=f'paycheck:{r["invoice_id"]}')],
       [InlineKeyboardButton(text='❌ Batal',callback_data=f'paycancel:{r["invoice_id"]}')]
@@ -123,9 +126,9 @@ async def creatorpay(c,state:FSMContext):
 @router.callback_query(F.data.startswith('choosepay:'))
 async def choose(c):
  _,typ,qty,amount=c.data.split(':'); payload=f'{typ}:{qty}:{amount}'; rows=[]
- if await enabled('bayargg'): rows.append([InlineKeyboardButton(text='⚡ BayarGG',callback_data=f'provider:{payload}:bayargg')])
- if await enabled('cashi'): rows.append([InlineKeyboardButton(text='💳 Cashi',callback_data=f'provider:{payload}:cashi')])
- if await enabled('manual'): rows.append([InlineKeyboardButton(text='🧾 QR Manual',callback_data=f'manualpkg:{payload}')])
+ if await enabled('bayargg'): rows.append([InlineKeyboardButton(text='QR 2',callback_data=f'provider:{payload}:bayargg')])
+ if await enabled('cashi'): rows.append([InlineKeyboardButton(text='QR 1',callback_data=f'provider:{payload}:cashi')])
+ if await enabled('manual'): rows.append([InlineKeyboardButton(text='QR Manual',callback_data=f'manualpkg:{payload}')])
  rows.append([InlineKeyboardButton(text='🔙 Kembali',callback_data='home')])
  await c.message.edit_text('💳 <b>PILIH PEMBAYARAN</b>',parse_mode='HTML',reply_markup=InlineKeyboardMarkup(inline_keyboard=rows))
 
@@ -149,11 +152,11 @@ async def provider(c):
  if not r:
   msg = (
    '❌ Pembayaran sedang ditutup.' if status == 'disabled'
-   else '❌ Nominal BayarGG harus Rp5.000–Rp500.000.' if status == 'invalid_amount'
+   else '❌ Nominal QR 2 harus Rp5.000–Rp500.000.' if status == 'invalid_amount'
    else '❌ Gagal membuat pembayaran. Coba lagi.'
   )
   return await c.answer(msg, show_alert=True)
- data=qr_bytes(r.get('qr_string')); text=f'💳 <b>PAYMENT</b>\n\n📦 {qty_i}\n💰 {fmt(amount_i)}\n🏦 {provider_name.upper()}\n🧾 <code>{r["invoice_id"]}</code>'
+ data=qr_bytes(r.get('qr_string')); text=f'💳 <b>PAYMENT</b>\n\n📦 {qty_i}\n💰 {fmt(amount_i)}\n🏦 {"QR 2" if provider_name=="bayargg" else "QR 1"}\n🧾 <code>{r["invoice_id"]}</code>'
  kb=InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text='🔄 Cek Pembayaran',callback_data=f'paycheck:{r["invoice_id"]}')],[InlineKeyboardButton(text='❌ Batal',callback_data=f'paycancel:{r["invoice_id"]}')]])
  if data: await c.message.answer_photo(BufferedInputFile(data,filename='payment.png'),caption=text,parse_mode='HTML',reply_markup=kb)
  else: await c.message.answer(text,parse_mode='HTML',reply_markup=kb)
@@ -324,10 +327,11 @@ async def approve(c):
    if r['target_code']:
     f=await conn.fetchrow("SELECT owner_id,price_idr FROM files WHERE code=$1 AND active=TRUE",r['target_code'])
     if f:
-     income=int(r['amount'])*20//100
+     income=int(r['amount'])*70//100
      await conn.execute("UPDATE files SET views=views+1 WHERE code=$1",r['target_code'])
      await conn.execute("UPDATE users SET total_unlocks=total_unlocks+1 WHERE user_id=$2",r['user_id'])
      if int(f['owner_id'])!=int(r['user_id']): await conn.execute("UPDATE users SET earnings=earnings+$1,total_sales=total_sales+1,points=points+1 WHERE user_id=$2",income,f['owner_id'])
+     await conn.execute("""INSERT INTO unlock_transactions(user_id,creator_id,code,payment_type,amount,creator_reward_points,creator_income_idr,expires_at) VALUES($1,$2,$3,'qr',$4,1,$5,NOW()+INTERVAL '24 hours')""",r['user_id'],f['owner_id'],r['target_code'],r['amount'],income)
    elif r['target_type']=='points':
     await conn.execute("UPDATE users SET points=points+$1 WHERE user_id=$2",r['quantity'],r['user_id'])
    elif r['target_type']=='stars':

@@ -190,100 +190,205 @@ async def browsecode(c):
     )
 
 HELP_TEXTS={
-"id":"""❓ <b>PANDUAN LENGKAP</b>
+"id":"""PANDUAN LENGKAP
 
-📤 <b>Up File</b>
-Kirim media melalui menu Up File. Bot menyimpan media ke storage dan membuat CODE. Setelah itu kamu dapat mengisi judul, tag, dan harga.
+UP FILE
+Kirim media melalui menu Up File di chat pribadi dengan bot. Bot akan menyimpan media, membuat CODE, dan menyimpan cadangan Telegram file_id. Creator dan Admin dapat membuat Paid Code. User biasa mengikuti batas akses yang berlaku.
 
-📥 <b>Get File</b>
-Masukkan CODE atau buka judul CODE. Untuk FREE CODE kamu dapat membuka media dengan Poin atau Star. Paid Code dapat dibayar melalui Saldo/QR sesuai metode yang aktif.
+GET FILE
+Masukkan CODE atau tekan tombol GET FILE. Media selalu dikirim ke chat pribadi, bukan ke group. Jika media di storage utama tidak tersedia, bot akan mencoba cadangan Telegram file_id. Jika semua sumber tidak tersedia, media tersebut akan ditandai tidak tersedia.
 
-🪙 <b>Poin</b>
-Poin digunakan untuk membuka FREE CODE. Akses Poin berlaku 24 jam. Creator mendapat potongan biaya Poin sesuai aturan bot.
+FREE CODE
+Free Code dapat dibuka sesuai metode akses yang tersedia, seperti Poin, Star, VIP, atau aturan akun. Masa akses mengikuti metode yang digunakan.
 
-⭐ <b>Star</b>
-Star digunakan untuk membuka FREE CODE dan akses berlaku 48 jam.
+PAID CODE
+Paid Code memiliki harga yang ditentukan oleh pembuat Code. Harga Paid mulai dari Rp2.000 sesuai aturan sistem. Saat pembayaran QR dipilih, nominal QR otomatis mengikuti harga Code.
 
-💎 <b>VIP</b>
-VIP dapat membuka media tanpa membayar per CODE. Code yang sama memiliki jeda pembukaan sesuai aturan VIP.
+PEMBAYARAN QR
+QR 1 = Cashi.
+QR 2 = BayarGG.
+Nama penyedia pembayaran tidak ditampilkan sebagai nama metode kepada pengguna; bot menggunakan nama QR 1 dan QR 2.
 
-💳 <b>Pembayaran</b>
-BayarGG/Cashi menampilkan QR. Setelah membayar tekan Cek Pembayaran. Jika batal, QR dihapus. Pembayaran manual membutuhkan screenshot bukti dan persetujuan admin.
+Jika nominal Code di bawah batas QR 2, sistem dapat mengalihkan pembayaran ke QR 1. Jika QR 1 juga tidak tersedia atau tidak mendukung nominal tersebut, sistem menggunakan QR Manual jika admin telah memasangnya.
 
-🎁 <b>Check In</b>
-Check-in setiap hari untuk mendapatkan Poin. Hari 1–6 mendapat 0.1 Poin dan hari ke-7 mendapat 1 Poin.
+QR Manual
+QR Manual digunakan sebagai metode cadangan. User membayar sesuai nominal Code, lalu mengirim bukti pembayaran. Admin memeriksa bukti dan dapat menyetujui atau menolak pembayaran. Akses diberikan setelah pembayaran disetujui.
 
-👑 <b>Creator</b>
-Creator dapat membuat CODE berbayar. Pendaftaran dan verifikasi mengikuti aturan yang tampil di menu Creator.
+SALDO
+Pembayaran menggunakan Saldo digunakan untuk akses Paid Code sesuai aturan sistem. Akses yang dibeli menggunakan Saldo dapat dipertahankan secara permanen sesuai aturan akses permanen.
 
-🔑 <b>All Code / Top 10 / Recommendation</b>
-Judul CODE dapat langsung diklik untuk membuka bot @Jsshowbot dengan CODE tersebut. Gunakan tombol halaman untuk melihat daftar berikutnya.
+POIN
+Poin adalah saldo poin untuk fitur yang mendukung pembayaran dengan Poin. Poin dapat diperoleh dari aktivitas bot, Check In, transaksi, atau paket Poin sesuai aturan yang aktif. Jumlah Poin yang diperlukan mengikuti jenis media dan status akun.
 
-🆘 <b>Masih bingung?</b>
-Kembali ke Dashboard lalu buka Help kapan saja.""",
-"en":"""❓ <b>FULL GUIDE</b>
+CREATOR
+Creator dapat membuat dan menjual Paid Code.
+Creator wajib melakukan upload Paid setiap hari sesuai aturan Creator.
+Kuota dasar Creator untuk membuka Paid Code adalah 1 kali per hari.
+Setiap 10 member unik yang membeli Paid Code Creator memberikan tambahan 1 kesempatan pembukaan Paid Code per hari.
+Creator mendapatkan manfaat Poin sesuai persentase yang ditetapkan sistem.
+Pendapatan Creator mengikuti pembagian komisi yang berlaku di platform.
+Creator yang pernah menjadi Creator dapat mengikuti mekanisme pembayaran lanjutan sebesar 30 persen dari biaya pendaftaran sesuai aturan sistem.
 
-📤 <b>Up File</b>
-Send your media from Up File. The bot stores the media and creates a CODE. You can then set the title, tags, and price.
+VIP
+VIP adalah status berlangganan yang memberikan akses dan keuntungan sesuai paket VIP yang dibeli.
+Benefit, durasi, cooldown, dan batas akses mengikuti paket VIP yang aktif. Detail paket dapat dilihat pada menu Buy VIP.
 
-📥 <b>Get File</b>
-Enter a CODE or click a CODE title. For FREE CODE, media can be unlocked with Points or Stars. Paid Code can be purchased using Balance or an enabled QR payment method.
+STAR
+Star adalah saldo Star yang digunakan pada fitur yang mendukung Star.
+Star dapat digunakan untuk membuka media sesuai aturan Star. Ketentuan durasi akses dan penggunaan mengikuti konfigurasi sistem yang aktif.
 
-🪙 <b>Points</b>
-Points are used to unlock FREE CODE media. Point access lasts 24 hours. Creators receive the configured Point benefit.
+CHECK IN
+Check In dapat digunakan setiap hari untuk memperoleh Poin sesuai aturan check-in. Reward dan ketentuan streak mengikuti konfigurasi yang aktif.
 
-⭐ <b>Stars</b>
-Stars can unlock FREE CODE media. Star access lasts 48 hours.
+GROUP CODE
+Jika user mengirim CODE di group khusus, bot dapat mendeteksi CODE dan menampilkan notifikasi teks serta tombol GET FILE.
+Tombol tersebut hanya dapat digunakan oleh user yang sudah memulai chat dengan bot menggunakan /start. User lain yang belum /start akan diminta melakukan /start terlebih dahulu.
+Media tidak pernah dikirim ke group. Media hanya dikirim ke private chat user yang melakukan akses.
 
-💎 <b>VIP</b>
-VIP users can open media without paying for each CODE. The same CODE has a VIP cooldown according to the bot rules.
+MEDIA EXPIRED
+Media dengan akses sementara dapat memiliki masa berlaku. Jika masa akses telah berakhir, media dapat dihapus oleh sistem sesuai aturan expiry. Akses permanen tidak mengikuti penghapusan sementara sesuai aturan sistem.
 
-💳 <b>Payments</b>
-BayarGG/Cashi shows a QR. After paying, press Check Payment. If you cancel, the QR message is removed. Manual payment requires a screenshot and admin approval.
+KEAMANAN PEMBAYARAN
+Jangan mengirim bukti pembayaran palsu. Jangan membagikan QR, invoice, atau data pembayaran kepada pihak lain. Jika pembayaran berhasil tetapi akses belum terbuka, hubungi Admin melalui jalur bantuan yang tersedia.
 
-🎁 <b>Check In</b>
-Check in daily to receive Points. Days 1–6 give 0.1 Point and day 7 gives 1 Point.
+ADMIN
+Admin dapat mengelola user, status akun, pembayaran manual, dan akses Code sesuai izin panel admin. Dalam kasus pembelian yang berhasil tetapi akses otomatis bermasalah, Admin dapat memberikan akses Code secara manual kepada user.
 
-👑 <b>Creator</b>
-Creators can make paid CODEs. Registration and verification follow the rules shown in the Creator menu.
+Jika masih bingung, kembali ke Dashboard dan buka Help kapan saja.""",
 
-🔑 <b>All Code / Top 10 / Recommendation</b>
-CODE titles are directly clickable and open @Jsshowbot with the CODE. Use the page buttons to browse more.
+"en":"""FULL GUIDE
 
-🆘 <b>Still confused?</b>
-Return to Dashboard and open Help anytime.""",
-"zh":"""❓ <b>完整使用说明</b>
+UP FILE
+Send media through Up File in the bot's private chat. The bot stores the media, creates a CODE, and keeps a Telegram file_id backup. Creators and Admins can create Paid Codes. Regular users follow the access limits that apply to their accounts.
 
-📤 <b>上传文件 Up File</b>
-进入 Up File 发送媒体。机器人会保存媒体并生成 CODE。之后可以设置标题、标签和价格。
+GET FILE
+Enter a CODE or press GET FILE. Media is always delivered to the user's private chat, never to the group. If the primary storage is unavailable, the bot tries the Telegram file_id backup. If all sources are unavailable, that media is marked unavailable.
 
-📥 <b>获取文件 Get File</b>
-输入 CODE 或点击 CODE 标题。FREE CODE 可以使用 Poin 或 Star 解锁，付费 CODE 可以使用余额或已开启的二维码支付方式购买。
+FREE CODE
+Free Code can be opened through the available access methods such as Points, Stars, VIP, or account rules. The access period depends on the method used.
 
-🪙 <b>Poin</b>
-Poin 用于解锁 FREE CODE，使用有效期为 24 小时。
+PAID CODE
+A Paid Code has a price set by its creator. Paid prices start from Rp2,000 under the system rules. When a QR payment is selected, the QR amount automatically follows the Code price.
 
-⭐ <b>Star</b>
-Star 用于解锁 FREE CODE，使用有效期为 48 小时。
+QR PAYMENTS
+QR 1 = Cashi.
+QR 2 = BayarGG.
+Provider names are not shown as payment method names to users; the bot presents them as QR 1 and QR 2.
 
-💎 <b>VIP</b>
-VIP 可以按照机器人规则打开媒体，同一个 CODE 有冷却时间。
+If the Code amount is below the QR 2 minimum, the system can move the payment to QR 1. If QR 1 is also unavailable or does not support the amount, the system uses QR Manual when the admin has configured it.
 
-💳 <b>付款</b>
-BayarGG/Cashi 会显示二维码。付款后点击“检查付款”。取消付款后二维码消息会被删除。人工付款需要发送付款截图并等待管理员审核。
+QR Manual
+QR Manual is the fallback payment method. Pay the exact Code amount, then submit payment proof. An Admin reviews the proof and can approve or reject the payment. Access is granted after approval.
 
-🎁 <b>每日签到</b>
-每天签到获得 Poin。第 1–6 天每天 0.1 Poin，第 7 天获得 1 Poin。
+BALANCE
+Balance payment is used for Paid Code access under the active access rules. Access purchased with Balance can be permanent when the permanent-access rule applies.
 
-👑 <b>Creator 创作者</b>
-Creator 可以创建付费 CODE。注册和审核按照 Creator 页面显示的规则进行。
+POINTS
+Points are the point balance used by features that support Points. Points may be earned from bot activities, Check In, transactions, or Point packages according to the active rules. The required amount depends on the media type and account status.
 
-🔑 <b>All Code / Top 10 / Recommendation</b>
-CODE 标题可以直接点击，会打开 @Jsshowbot 并携带对应 CODE。使用分页按钮浏览更多内容。
+CREATOR
+Creators can create and sell Paid Codes.
+Creators are required to upload Paid content every day under the Creator rules.
+The base Creator allowance for opening Paid Code is 1 time per day.
+Every 10 unique members who purchase a Creator's Paid Code gives 1 additional Paid Code opening per day.
+Creators receive the configured Point benefit.
+Creator earnings follow the platform's active commission rules.
+A user who was previously a Creator can use the renewal mechanism at 30 percent of the registration fee according to the system rules.
 
-🆘 <b>仍然不明白？</b>
-返回 Dashboard，随时打开 Help 查看说明。"""
+VIP
+VIP is a subscription status that provides access and benefits according to the purchased VIP package.
+Benefits, duration, cooldowns, and limits follow the active VIP package. Open Buy VIP to view the available packages.
+
+STAR
+Stars are a Star balance used by features that support Stars.
+Stars can be used to open media according to the Star rules. Access duration and usage follow the active system configuration.
+
+CHECK IN
+Check In can be used daily to receive Points according to the check-in rules. Rewards and streak conditions follow the active configuration.
+
+GROUP CODE
+When a user sends a CODE in the designated group, the bot can detect the CODE and post a text notification with a GET FILE button.
+The button can only be used by a user who has already started a private chat with the bot using /start. Other users who have not started the bot are asked to use /start first.
+Media is never sent to the group. Media is delivered only to the private chat of the user requesting access.
+
+MEDIA EXPIRY
+Temporary access can have an expiry period. When the access period ends, the media may be deleted by the expiry system. Permanent access follows the permanent-access rules.
+
+PAYMENT SAFETY
+Do not submit fake payment proof. Do not share QR, invoice, or payment data with other people. If payment succeeds but access does not open, contact Admin through the available support route.
+
+ADMIN
+Admins can manage users, account statuses, manual payments, and Code access according to panel permissions. If a successful purchase cannot automatically open access, an Admin can manually grant Code access to the user.
+
+If you are still confused, return to Dashboard and open Help anytime.""",
+
+"zh":"""完整使用说明
+
+上传文件 UP FILE
+请在机器人私聊中使用 Up File 发送媒体。机器人会保存媒体、生成 CODE，并保存 Telegram file_id 作为备用。Creator 和 Admin 可以创建付费 CODE，普通用户按照账号权限使用。
+
+获取文件 GET FILE
+输入 CODE 或点击 GET FILE。媒体始终发送到用户私聊，不会发送到群组。如果主要存储不可用，机器人会尝试使用 Telegram file_id 备用媒体。如果所有来源都不可用，该媒体会被标记为不可用。
+
+免费 CODE
+Free Code 可以根据当前可用的 Poin、Star、VIP 或账号规则打开。有效时间取决于所使用的方式。
+
+付费 CODE
+Paid Code 的价格由创建者设置。按照系统规则，Paid Code 最低从 Rp2,000 开始。选择二维码支付时，二维码金额会自动使用 CODE 的价格。
+
+二维码支付
+QR 1 = Cashi。
+QR 2 = BayarGG。
+用户界面不会显示支付平台名称，而是统一显示为 QR 1 和 QR 2。
+
+如果 CODE 金额低于 QR 2 的最低金额，系统可以自动转到 QR 1。如果 QR 1 也不可用或不支持该金额，并且管理员已经设置了人工二维码，则系统会使用 QR Manual。
+
+人工二维码 QR Manual
+QR Manual 是备用支付方式。用户按照 CODE 的准确金额付款，然后提交付款截图。管理员审核截图后可以批准或拒绝。审核通过后才会开通访问权限。
+
+余额 SALDO
+使用余额支付可以按照当前规则打开 Paid Code。符合永久访问规则的余额购买可以保持永久访问。
+
+积分 POIN
+Poin 是支持积分功能时使用的积分余额。积分可以通过机器人活动、每日签到、交易或积分套餐获得。需要的积分数量取决于媒体类型和账号状态。
+
+CREATOR
+Creator 可以创建和销售 Paid Code。
+Creator 按照规则每天必须上传 Paid 内容。
+Creator 每天基础可以免费打开 Paid Code 1 次。
+每有 10 个不同会员购买 Creator 的 Paid Code，每天增加 1 次 Paid Code 免费打开次数。
+Creator 按系统设置获得 Poin 优惠。
+Creator 收益按照平台当前的分成规则计算。
+以前已经成为 Creator 的用户，可以按照系统规则以注册费用的 30% 使用续费或再次升级机制。
+
+VIP
+VIP 是一种会员订阅状态，可以根据购买的 VIP 套餐获得对应权限和福利。
+具体福利、有效期、冷却时间和限制以当前 VIP 套餐为准。可以进入 Buy VIP 查看套餐。
+
+STAR
+Star 是支持 Star 功能时使用的 Star 余额。
+Star 可以按照 Star 规则打开媒体。有效时间和使用规则以当前系统配置为准。
+
+每日签到 CHECK IN
+每天可以使用 Check In 获得 Poin。签到奖励和连续签到规则按照当前配置执行。
+
+群组 CODE
+当用户在指定群组发送 CODE 时，机器人可以识别 CODE，并在群组中发送文字通知和 GET FILE 按钮。
+只有已经使用 /start 与机器人建立私聊的用户才能使用该按钮。其他未启动机器人的用户会被要求先使用 /start。
+媒体绝不会发送到群组，只会发送到请求访问的用户私聊。
+
+媒体过期
+临时访问可以设置有效时间。访问时间结束后，媒体可能会由过期系统删除。永久访问按照永久访问规则处理。
+
+支付安全
+请勿提交虚假付款证明，也不要向他人分享二维码、发票或支付信息。如果付款成功但 CODE 没有打开，请通过可用的客服方式联系 Admin。
+
+管理员 ADMIN
+管理员可以根据后台权限管理用户、账号状态、人工付款和 CODE 访问。如果用户已经成功付款但自动开通失败，管理员可以在后台为指定用户手动开通 CODE。
+
+如果仍然不明白，请返回 Dashboard，随时打开 Help 查看说明。"""
 }
+
 
 @router.callback_query(F.data=='help')
 async def help_(c):
@@ -363,21 +468,70 @@ async def media_hint(m:Message):
     await m.answer('📎 <b>Media terdeteksi</b>\n\nTekan tombol di bawah untuk upload.',parse_mode='HTML',
                    reply_markup=InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text='📤 Up File',callback_data='upfile')]]))
 
-@router.message(F.photo)
+@router.message(F.chat.type == 'private', F.photo)
 async def photo_hint(m): await media_hint(m)
 
-@router.message(F.video)
+@router.message(F.chat.type == 'private', F.video)
 async def video_hint(m): await media_hint(m)
 
-@router.message(F.document)
+@router.message(F.chat.type == 'private', F.document)
 async def document_hint(m): await media_hint(m)
 
-@router.message(F.audio)
+@router.message(F.chat.type == 'private', F.audio)
 async def audio_hint(m): await media_hint(m)
 
-@router.message(F.chat.type.in_({'group','supergroup'}), F.text.regexp(r'^[A-Za-z0-9]+_[123456789XxYy]{11}_[0-9]+p[0-9]+v[0-9]+d$'))
+@router.message(F.chat.type.in_({'group','supergroup'}), F.chat.id == CODE_GROUP_ID, F.text.regexp(r'^[A-Za-z0-9]+_[123456789XxYy]{11}_[0-9]+p[0-9]+v[0-9]+d$'))
 async def track_group_code(m):
-    p=await get_pool(); code=m.text.strip()
-    owner=await p.fetchval("SELECT owner_id FROM files WHERE lower(code)=lower($1) AND active=TRUE",code)
-    if owner:
-        await p.execute("INSERT INTO code_group_shares(code,group_id,shared_by) VALUES($1,$2,$3) ON CONFLICT(code,group_id) DO UPDATE SET last_seen_at=NOW()",code,m.chat.id,m.from_user.id)
+    code=m.text.strip()
+    p=await get_pool()
+    row=await p.fetchrow("SELECT code FROM files WHERE lower(code)=lower($1) AND active=TRUE",code)
+    if not row:
+        return
+    try:
+        await p.execute(
+            "INSERT INTO code_group_shares(code,group_id,shared_by) VALUES($1,$2,$3) "
+            "ON CONFLICT(code,group_id) DO UPDATE SET last_seen_at=NOW()",
+            code,m.chat.id,m.from_user.id
+        )
+    except Exception:
+        pass
+    from utils.group_notify import notify_code_detected
+    await notify_code_detected(m.bot, m, row["code"])
+
+@router.callback_query(F.data.startswith('groupget:'))
+async def group_get_file(c):
+    # This callback originates in the group. It must NEVER send media to the group.
+    # It only sends a private control message after the user has started the bot.
+    code=c.data.split(':',1)[1].strip()
+    p=await get_pool()
+    started=await p.fetchval("SELECT bot_started_at FROM users WHERE user_id=$1",c.from_user.id)
+    if not started:
+        await c.answer("Klik /start dulu di bot. Setelah itu kamu bisa menekan GET FILE.", show_alert=True)
+        return
+
+    f=await p.fetchrow(
+        "SELECT code,title,media_count,price_idr,active FROM files "
+        "WHERE lower(code)=lower($1) AND active=TRUE",code
+    )
+    if not f:
+        await c.answer("Code tidak ditemukan atau sudah tidak aktif.", show_alert=True)
+        return
+
+    from handlers.getfile import open_choices
+    # Open the code in the user's private chat. A bot can only initiate this
+    # because the user has already started the bot.
+    try:
+        await c.bot.send_message(
+            c.from_user.id,
+            f"CODE TERDETEKSI\n\n"
+            f"Code: <code>{html.escape(f['code'])}</code>\n"
+            f"Media: <b>{int(f['media_count'])}</b>\n\n"
+            "Pilih GET FILE untuk melanjutkan.",
+            parse_mode="HTML",
+            reply_markup=InlineKeyboardMarkup(inline_keyboard=[
+                [InlineKeyboardButton(text="GET FILE", callback_data=f"getcode:{f['code']}")]
+            ])
+        )
+        await c.answer("GET FILE dikirim ke chat pribadi.")
+    except Exception:
+        await c.answer("Buka chat pribadi dengan bot lalu klik /start.", show_alert=True)

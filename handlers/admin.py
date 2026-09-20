@@ -54,7 +54,7 @@ async def admin_command(m):
         reply_markup=kb()
     )
 class AdminState(StatesGroup):
-    creator=State(); broadcast=State(); edit_code=State(); edit_title=State(); edit_tags=State(); edit_price=State(); user_action=State(); move=State()
+    creator=State(); broadcast=State(); edit_code=State(); edit_title=State(); edit_tags=State(); edit_price=State(); user_action=State(); move=State(); grant_open_user=State(); grant_open_code=State(); role_user=State()
 
 def admin(uid): return is_config_admin(uid)
 async def val(key): return str(await (await get_pool()).fetchval("SELECT value FROM settings WHERE key=$1",key) or "off")
@@ -64,6 +64,7 @@ def kb():
  return InlineKeyboardMarkup(inline_keyboard=[
   [InlineKeyboardButton(text='💳 Pembayaran',callback_data='adm:payments'),InlineKeyboardButton(text='📢 Broadcast',callback_data='adm:broadcast')],
   [InlineKeyboardButton(text='🗂 Code',callback_data='adm:codes'),InlineKeyboardButton(text='👥 Users',callback_data='adm:users')],
+  [InlineKeyboardButton(text='🔓 Buka Code untuk User',callback_data='adm:grantopen'),InlineKeyboardButton(text='👤 Atur Role User',callback_data='adm:roles')],
   [InlineKeyboardButton(text='🗄 B2 Storage',callback_data='adm:b2'),InlineKeyboardButton(text='⚙️ Bot Control',callback_data='adm:control')],
   [InlineKeyboardButton(text='🧾 Manual Payment',callback_data='adm:manual'),InlineKeyboardButton(text='📊 Statistics',callback_data='adm:stats')],
   [InlineKeyboardButton(text='🚨 Bot Errors',callback_data='adm:errors')],
@@ -242,6 +243,70 @@ async def manproof(c):
   await c.answer()
  except Exception:
   await c.answer('❌ Gagal menampilkan bukti.',show_alert=True)
+
+@router.callback_query(F.data=='adm:grantopen')
+async def grantopen_start(c,state):
+ if not await admin_access(c.from_user.id): return await c.answer('No access',show_alert=True)
+ await state.set_state(AdminState.grant_open_user)
+ await c.message.answer('Kirim Telegram User ID yang akan diberi akses buka code.')
+
+@router.message(AdminState.grant_open_user)
+async def grantopen_user(m,state):
+ if not await admin_access(m.from_user.id): return
+ try: uid=int((m.text or '').strip())
+ except: return await m.answer('User ID tidak valid.')
+ p=await get_pool(); u=await p.fetchrow('SELECT user_id,username FROM users WHERE user_id=$1',uid)
+ if not u:return await m.answer('User belum terdaftar di bot.')
+ await state.update_data(grant_user=uid); await state.set_state(AdminState.grant_open_code); await m.answer('Sekarang kirim CODE yang ingin dibuka untuk user tersebut.')
+
+@router.message(AdminState.grant_open_code)
+async def grantopen_code(m,state):
+ if not await admin_access(m.from_user.id): return
+ d=await state.get_data(); uid=int(d.get('grant_user') or 0); code=(m.text or '').strip()
+ p=await get_pool(); f=await p.fetchrow('SELECT owner_id,price_idr,active FROM files WHERE code=$1',code)
+ if not f or not f['active']:
+  return await m.answer('Code tidak ditemukan atau tidak aktif.')
+ await p.execute("""INSERT INTO unlock_transactions(user_id,creator_id,code,payment_type,amount,creator_reward_points,creator_income_idr,expires_at)
+    VALUES($1,$2,$3,'admin',$4,0,0,NOW()+INTERVAL '100 years')""",uid,f['owner_id'],code,f['price_idr'] or 0)
+ await state.clear()
+ from aiogram.types import InlineKeyboardMarkup,InlineKeyboardButton
+ try:
+  await m.bot.send_message(uid,f'Admin memberikan akses buka code.\n\nCode: <code>{html.escape(code)}</code>',parse_mode='HTML',reply_markup=InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text='Buka Code',callback_data=f'getcode:{code}')]]))
+  sent='Pesan dikirim ke user.'
+ except Exception as exc:
+  sent=f'Gagal mengirim pesan ke user: {html.escape(str(exc)[:120])}'
+ await m.answer(f'Akses code diberikan untuk {uid}. {sent}')
+
+@router.callback_query(F.data=='adm:roles')
+async def roles_start(c,state):
+ if not await admin_access(c.from_user.id): return await c.answer('No access',show_alert=True)
+ await state.set_state(AdminState.role_user); await c.message.answer('Kirim Telegram User ID yang akan diatur rolenya.')
+
+@router.message(AdminState.role_user)
+async def role_user(m,state):
+ if not await admin_access(m.from_user.id): return
+ try: uid=int((m.text or '').strip())
+ except: return await m.answer('User ID tidak valid.')
+ p=await get_pool(); u=await p.fetchrow('SELECT user_id,username,is_admin,is_creator,creator_status,vip FROM users WHERE user_id=$1',uid)
+ if not u:return await m.answer('User tidak ditemukan.')
+ await state.clear()
+ rows=[[InlineKeyboardButton(text='Member',callback_data=f'admrole:member:{uid}'),InlineKeyboardButton(text='VIP',callback_data=f'admrole:vip:{uid}')],[InlineKeyboardButton(text='Creator',callback_data=f'admrole:creator:{uid}'),InlineKeyboardButton(text='Admin',callback_data=f'admrole:admin:{uid}')]]
+ await m.answer(f'User <code>{uid}</code> @{html.escape(u["username"] or "-")}\n\nPilih role:',parse_mode='HTML',reply_markup=InlineKeyboardMarkup(inline_keyboard=rows))
+
+@router.callback_query(F.data.startswith('admrole:'))
+async def role_apply(c):
+ if not await admin_access(c.from_user.id): return await c.answer('No access',show_alert=True)
+ _,role,uid_s=c.data.split(':',2); uid=int(uid_s); p=await get_pool()
+ if role=='member':
+  await p.execute("UPDATE users SET is_admin=FALSE,is_creator=FALSE,creator_status='none',vip=FALSE,vip_until=NULL WHERE user_id=$1",uid)
+ elif role=='vip':
+  await p.execute("UPDATE users SET is_admin=FALSE,is_creator=FALSE,creator_status='none',vip=TRUE,vip_until=NOW()+INTERVAL '30 days' WHERE user_id=$1",uid)
+ elif role=='creator':
+  await p.execute("UPDATE users SET is_admin=FALSE,is_creator=TRUE,creator_status='approved',creator_previous=TRUE WHERE user_id=$1",uid)
+ elif role=='admin':
+  await p.execute("UPDATE users SET is_admin=TRUE WHERE user_id=$1",uid); ADMIN_IDS.add(uid)
+ await c.answer(f'Role {role} diterapkan.')
+ await c.message.edit_text(f'Role user <code>{uid}</code>: <b>{role.upper()}</b>',parse_mode='HTML',reply_markup=InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text='Kembali',callback_data='adm:panel')]]))
 
 @router.callback_query(F.data.startswith('adm:users'))
 async def users(c):

@@ -41,7 +41,7 @@ async def start(c,state):
         parse_mode='HTML',reply_markup=media_kb())
     await state.update_data(status_message_id=msg.message_id)
 
-@router.message(U.media)
+@router.message(F.chat.type == "private", U.media)
 async def receive(m,state):
     uid=m.from_user.id
     lock=_LOCKS.setdefault(uid,asyncio.Lock())
@@ -101,7 +101,7 @@ async def receive(m,state):
                 except: pass
             f=await m.bot.get_file(fid); await m.bot.download_file(f.file_path,path)
             account,key,_=await b2_pool.upload(path,name,mime)
-            media.append({'drive_account':account,'drive_file_id':key,'type':typ,'file_name':name,'file_size':size,'mime_type':mime})
+            media.append({'telegram_file_id':fid,'telegram_file_unique_id':getattr((m.photo[-1] if m.photo else m.video if m.video else m.document if m.document else m.audio),'file_unique_id',None),'drive_account':account,'drive_file_id':key,'type':typ,'file_name':name,'file_size':size,'mime_type':mime,'storage_status':'b2_available'})
             await state.update_data(media=media)
             if status_id:
                 try: await m.bot.edit_message_text(chat_id=m.chat.id,message_id=status_id,text=f'📤 <b>UP FILE</b>\n\n✅ <b>{len(media)}/{MAX_MEDIA}</b> media tersimpan.\n\nTekan <b>✅ Selesai Upload</b> untuk lanjut.',parse_mode='HTML',reply_markup=media_kb())
@@ -149,7 +149,7 @@ async def tags(m,state):
     paid_allowed=creator or m.from_user.id==OWNER_ID or m.from_user.id in ADMIN_IDS
     text='💰 <b>MASUKKAN HARGA CODE</b>\n\n'
     if paid_allowed:
-        text+=f'Creator/Admin dapat membuat paid code.\nMinimal Rp{PAID_CODE_MIN_IDR:,} • Maksimal Rp{PAID_CODE_MAX_IDR:,}\nKirim <code>0</code> untuk FREE.'.replace(',','.')
+        text+=f'Creator/Admin dapat membuat paid code.\nMinimal Rp{PAID_CODE_MIN_IDR:,} • Maksimal Rp{PAID_CODE_MAX_IDR:,} • kelipatan Rp1.000\nKirim <code>0</code> untuk FREE.'.replace(',','.')
     else:text+='Akun kamu hanya dapat membuat FREE code.\nKirim <code>0</code>.'
     await m.answer(text,parse_mode='HTML')
 
@@ -163,6 +163,11 @@ async def price(m,state):
     allowed=creator or m.from_user.id==OWNER_ID or m.from_user.id in ADMIN_IDS
     if price<0:return await m.answer('❌ Harga tidak valid.')
     if not allowed and price!=0:return await m.answer('❌ Hanya Creator/Admin yang dapat membuat paid code. Kirim 0.')
+    if allowed and creator and price==0:
+        p=await get_pool()
+        already=await p.fetchval("SELECT 1 FROM files WHERE owner_id=$1 AND price_idr>0 AND created_at::date=CURRENT_DATE LIMIT 1",m.from_user.id)
+        if not already:
+            return await m.answer('Creator wajib membuat minimal 1 Paid Code setiap hari. Masukkan harga mulai Rp2.000.')
     if allowed and price and not (PAID_CODE_MIN_IDR<=price<=PAID_CODE_MAX_IDR):
         return await m.answer(f'❌ Harga harus Rp{PAID_CODE_MIN_IDR:,} s/d Rp{PAID_CODE_MAX_IDR:,}.'.replace(',','.'))
     media=d.get('media',[]); title=d.get('title','Untitled'); tags=d.get('tags',[])
@@ -178,12 +183,6 @@ async def price(m,state):
     await m.answer(
         f'✅ <b>CODE BERHASIL DIBUAT</b>\n\n📝 Judul: <b>{html.escape(title)}</b>\n🏷 Tag: {tagtext}\n💰 Harga: <b>{paytxt}</b>\n🔑 <code>{code}</code>\n📦 {len(media)} media',
         parse_mode='HTML')
-    from config import CODE_GROUP_ID
-    if CODE_GROUP_ID:
-        try:
-            kb=InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text='📥 Get File',callback_data=f'getcode:{code}')]])
-            await c.bot.send_message(CODE_GROUP_ID,f'💾 <b>MEDIA SAVE</b>\n\n📝 Judul: <b>{html.escape(title)}</b>\n🔑 Code: <code>{code}</code>\n🤖 Bot: @{BOT_USERNAME}',parse_mode='HTML',reply_markup=kb)
-        except: pass
 
 @router.callback_query(F.data=='up_cancel')
 async def cancel(c,state):

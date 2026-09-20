@@ -15,9 +15,10 @@ async def dashboard_text(uid):
  status='CREATOR' if creator else ('VIP' if vip else 'FREE')
  return f"👤 <b>Dashboard</b>\n\n🆔 ID: <code>{uid}</code>\n🟢 Status: <b>{status}</b>\n💰 Saldo: <b>Rp{int(r['balance'] or 0):,}</b>\n🪙 Poin: <b>{float(r['points'] or 0):g}</b>\n⭐ Star: <b>{float(r['stars'] or 0):g}</b>\n\n💡 Belum paham cara menggunakan bot? Klik <b>Help</b> untuk melihat panduan lengkap.".replace(',','.'),creator
 
-@router.message(CommandStart())
+@router.message(F.chat.type == 'private', CommandStart())
 async def start(m):
  await ensure_user(m.from_user.id,m.from_user.username,m.from_user.full_name)
+ await (await get_pool()).execute("UPDATE users SET bot_started_at=NOW() WHERE user_id=$1",m.from_user.id)
  # Telegram deep-link: https://t.me/<bot>?start=<CODE>
  parts=(m.text or '').split(maxsplit=1)
  if len(parts)==2 and parts[1].strip():
