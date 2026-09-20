@@ -142,3 +142,14 @@ The OK button deletes only that help message.
 ## Syntax fix
 Fixed the malformed multiline POINTS_HELP_TEXT string in handlers/start.py.
 All Python files were syntax-compiled successfully before packaging.
+
+
+## New payment / All Code configuration
+- `BOT_USERNAME=Jsshowbot` is the deep-link target used by All Code and Top 10.
+- `CODE_GROUP_URL=https://t.me/+kR6SJNQ8sUZjZTYx`
+- `TRANSACTION_CHANNEL_URL=https://t.me/+8NajMZzycUE2NGE1`
+- `NOTICE_CHANNEL_URL=https://t.me/noticsaluran`
+- `ERROR_NOTICE_CHAT_ID=@noticsaluran`
+- Set `TRANSACTION_CHAT_ID` to the actual Telegram channel ID (or a public @username) so the bot can automatically post successful transactions. A private `https://t.me/+...` invite link is not a valid Bot API chat_id.
+- Manual QR now has Check Payment -> screenshot proof -> admin Approve/Reject, plus Cancel. The QR message is deleted on cancel/approval/rejection.
+- BayarGG/Cashi QR is reused while the provider invoice is still pending/valid; after expiry a new invoice is created.

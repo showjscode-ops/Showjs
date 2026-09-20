@@ -94,6 +94,10 @@ async def init_db():
       finished_at TIMESTAMPTZ
     );
 
+    -- Existing deployments may have the old unlock payment constraint.
+    ALTER TABLE IF EXISTS unlock_transactions DROP CONSTRAINT IF EXISTS unlock_transactions_payment_type_check;
+    ALTER TABLE IF EXISTS unlock_transactions ADD CONSTRAINT unlock_transactions_payment_type_check CHECK(payment_type IN ('points','star','balance'));
+
     CREATE INDEX IF NOT EXISTS idx_manual_deposits_status ON manual_deposits(status,created_at);
     CREATE INDEX IF NOT EXISTS idx_error_logs_created ON error_logs(created_at DESC);
     CREATE INDEX IF NOT EXISTS idx_code_reactions_code ON code_reactions(code);

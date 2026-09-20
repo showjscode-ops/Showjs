@@ -60,7 +60,7 @@ CREATE TABLE IF NOT EXISTS unlock_transactions(
  user_id BIGINT NOT NULL REFERENCES users(user_id) ON DELETE CASCADE,
  creator_id BIGINT,
  code TEXT NOT NULL,
- payment_type TEXT NOT NULL CHECK(payment_type IN('points','star')),
+ payment_type TEXT NOT NULL CHECK(payment_type IN('points','star','balance')),
  amount NUMERIC(18,2) NOT NULL,
  creator_reward_points NUMERIC(18,2) NOT NULL DEFAULT 1,
  creator_income_idr NUMERIC(18,2) NOT NULL DEFAULT 0,
