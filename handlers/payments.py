@@ -66,8 +66,10 @@ async def deppay(c,state:FSMContext):
  if not r:return await c.answer('❌ Pembayaran sedang ditutup.',show_alert=True)
  data=qr_bytes(r.get('qr_string')); text=f'💳 <b>DEPOSIT</b>\n\n💰 {fmt(amount)}\n🏦 {provider.upper()}\n🧾 <code>{r["invoice_id"]}</code>\n\nSaldo akan masuk otomatis setelah pembayaran terverifikasi.'
  kb=InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text='🔄 Cek Pembayaran',callback_data=f'paycheck:{r["invoice_id"]}')],[InlineKeyboardButton(text='❌ Batal',callback_data=f'paycancel:{r["invoice_id"]}')]])
- if data: await c.message.answer_photo(BufferedInputFile(data,filename='deposit.png'),caption=text,parse_mode='HTML',reply_markup=kb)
- else: await c.message.answer(text,parse_mode='HTML',reply_markup=kb)
+ if data:
+  await c.message.answer_photo(BufferedInputFile(data,filename='deposit.png'),caption=text,parse_mode='HTML',reply_markup=kb)
+ else:
+  await c.message.answer(text + "\n\n⚠️ QR pembayaran belum diterima dari provider. Tekan <b>Cek Pembayaran</b> setelah provider menyediakan QR.",parse_mode='HTML',reply_markup=kb)
 
 @router.callback_query(F.data.startswith('choosepay:'))
 async def choose(c):
@@ -100,8 +102,10 @@ async def provider(c):
   return await c.answer(msg, show_alert=True)
  data=qr_bytes(r.get('qr_string')); text=f'💳 <b>PAYMENT</b>\n\n📦 {qty_i}\n💰 {fmt(amount_i)}\n🏦 {provider_name.upper()}\n🧾 <code>{r["invoice_id"]}</code>'
  kb=InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text='🔄 Cek Pembayaran',callback_data=f'paycheck:{r["invoice_id"]}')],[InlineKeyboardButton(text='❌ Batal',callback_data=f'paycancel:{r["invoice_id"]}')]])
- if data: await c.message.answer_photo(BufferedInputFile(data,filename='payment.png'),caption=text,parse_mode='HTML',reply_markup=kb)
- else: await c.message.answer(text,parse_mode='HTML',reply_markup=kb)
+ if data:
+  await c.message.answer_photo(BufferedInputFile(data,filename='payment.png'),caption=text,parse_mode='HTML',reply_markup=kb)
+ else:
+  await c.message.answer(text + "\n\n⚠️ QR pembayaran belum diterima dari provider. Tekan <b>Cek Pembayaran</b> setelah provider menyediakan QR.",parse_mode='HTML',reply_markup=kb)
 
 
 @router.callback_query(F.data.startswith('paycheck:'))
