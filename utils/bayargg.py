@@ -15,8 +15,7 @@ class BayarGG:
         payload={
             "amount":int(amount),
             "description":str(description)[:200],
-            "payment_url":"https://www.bayar.gg/pay",
-            "payment_method":"qris_bayar_gg",
+            "payment_method":"qris",
             "customer_name":clean_name(customer_name or "Customer"),
         }
         if callback_url: payload["callback_url"]=callback_url
