@@ -390,18 +390,59 @@ Star 可以按照 Star 规则打开媒体。有效时间和使用规则以当前
 }
 
 
+def _help_pages(lang: str):
+    text = HELP_TEXTS.get(lang, HELP_TEXTS["id"])
+    paragraphs = [x.strip() for x in text.split("\n\n") if x.strip()]
+    pages = []
+    current = ""
+    # Telegram message text limit is 4096 characters. Keep a safe margin
+    # because HTML/entity handling and future edits can change the size.
+    limit = 3400
+    for paragraph in paragraphs:
+        candidate = paragraph if not current else current + "\n\n" + paragraph
+        if len(candidate) <= limit:
+            current = candidate
+        else:
+            if current:
+                pages.append(current)
+            # A single section should also never exceed the limit.
+            while len(paragraph) > limit:
+                cut = paragraph.rfind("\n", 0, limit)
+                if cut < 1000:
+                    cut = limit
+                pages.append(paragraph[:cut].strip())
+                paragraph = paragraph[cut:].strip()
+            current = paragraph
+    if current:
+        pages.append(current)
+    return pages or [""]
+
+def _help_keyboard(lang: str, page: int):
+    pages = _help_pages(lang)
+    rows = []
+    nav = []
+    if page > 0:
+        nav.append(InlineKeyboardButton(text="‹ Prev", callback_data=f"help:page:{lang}:{page-1}"))
+    if page < len(pages)-1:
+        nav.append(InlineKeyboardButton(text="Next ›", callback_data=f"help:page:{lang}:{page+1}"))
+    if nav:
+        rows.append(nav)
+    rows.append([
+        InlineKeyboardButton(text='🇮🇩 Indonesia',callback_data='help:lang:id'),
+        InlineKeyboardButton(text='🇬🇧 English',callback_data='help:lang:en'),
+        InlineKeyboardButton(text='🇨🇳 中文',callback_data='help:lang:zh')
+    ])
+    rows.append([InlineKeyboardButton(text=f"Page {page+1}/{len(pages)}", callback_data='help:noop')])
+    rows.append([InlineKeyboardButton(text='🔙 Kembali',callback_data='home')])
+    return InlineKeyboardMarkup(inline_keyboard=rows)
+
 @router.callback_query(F.data=='help')
 async def help_(c):
     await loading(c)
     await c.message.edit_text(
-        HELP_TEXTS["id"],parse_mode='HTML',
-        reply_markup=InlineKeyboardMarkup(inline_keyboard=[
-            [InlineKeyboardButton(text='🇮🇩 Indonesia',callback_data='help:lang:id'),
-             InlineKeyboardButton(text='🇬🇧 English',callback_data='help:lang:en'),
-             InlineKeyboardButton(text='🇨🇳 中文',callback_data='help:lang:zh')],
-            [InlineKeyboardButton(text='🌐 Select Language / 选择语言',callback_data='help:lang:id')],
-            [InlineKeyboardButton(text='🔙 Kembali',callback_data='home')]
-        ])
+        _help_pages("id")[0],
+        parse_mode='HTML',
+        reply_markup=_help_keyboard("id", 0)
     )
 
 @router.callback_query(F.data.startswith('help:lang:'))
@@ -410,14 +451,33 @@ async def help_lang(c):
     if lang not in HELP_TEXTS: lang="id"
     await loading(c)
     await c.message.edit_text(
-        HELP_TEXTS[lang],parse_mode='HTML',
-        reply_markup=InlineKeyboardMarkup(inline_keyboard=[
-            [InlineKeyboardButton(text='🇮🇩 Indonesia',callback_data='help:lang:id'),
-             InlineKeyboardButton(text='🇬🇧 English',callback_data='help:lang:en'),
-             InlineKeyboardButton(text='🇨🇳 中文',callback_data='help:lang:zh')],
-            [InlineKeyboardButton(text='🔙 Kembali',callback_data='home')]
-        ])
+        _help_pages(lang)[0],
+        parse_mode='HTML',
+        reply_markup=_help_keyboard(lang, 0)
     )
+
+@router.callback_query(F.data.startswith('help:page:'))
+async def help_page(c):
+    parts=c.data.split(':')
+    lang=parts[2] if len(parts) > 2 else 'id'
+    try:
+        page=int(parts[3])
+    except (ValueError, IndexError):
+        page=0
+    if lang not in HELP_TEXTS:
+        lang='id'
+    pages=_help_pages(lang)
+    page=max(0, min(page, len(pages)-1))
+    await loading(c)
+    await c.message.edit_text(
+        pages[page],
+        parse_mode='HTML',
+        reply_markup=_help_keyboard(lang, page)
+    )
+
+@router.callback_query(F.data=='help:noop')
+async def help_noop(c):
+    await c.answer()
 
 @router.callback_query(F.data=='buy_vip')
 async def vip(c):
