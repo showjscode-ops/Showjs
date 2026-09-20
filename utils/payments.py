@@ -16,7 +16,34 @@ def qr_bytes(value):
     buf=BytesIO(); qrcode.make(value).save(buf,format="PNG"); return buf.getvalue()
 
 async def enabled(provider):
-    return str(await (await get_pool()).fetchval("SELECT value FROM settings WHERE key=$1",f"payment_{provider}_enabled") or "off").lower() in {"on","1","true","yes"}
+    """Return the single canonical payment toggle used by both admin and checkout.
+
+    Aliases such as balance_bayargg were the cause of the old mismatch: the
+    admin panel changed payment_bayargg_enabled while checkout sometimes
+    looked for payment_balance_bayargg_enabled. Keep aliases only as input
+    compatibility; NEVER create/read a second setting key.
+    """
+    aliases = {
+        "balance_bayargg": "bayargg",
+        "balance_cashi": "cashi",
+        "payment_bayargg": "bayargg",
+        "payment_cashi": "cashi",
+        "payment_manual": "manual",
+        "payment_balance": "balance",
+    }
+    provider = aliases.get(str(provider).lower(), str(provider).lower())
+    key_map = {
+        "bayargg": "payment_bayargg_enabled",
+        "cashi": "payment_cashi_enabled",
+        "manual": "payment_manual_enabled",
+        "balance": "payment_balance_enabled",
+    }
+    key = key_map.get(provider)
+    if not key:
+        return False
+    p = await get_pool()
+    value = await p.fetchval("SELECT value FROM settings WHERE key=$1", key)
+    return str(value or "off").strip().lower() in {"on", "1", "true", "yes", "enabled"}
 
 async def create_purchase(uid,typ,qty,amount,provider,name,metadata=None):
     if not await enabled(provider): return None,"disabled"
