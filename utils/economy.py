@@ -2,7 +2,7 @@
 from decimal import Decimal
 from datetime import datetime,timedelta,timezone,date
 from database import get_pool
-from config import POINT_UNLOCK_HOURS,STAR_UNLOCK_HOURS,STAR_PER_MEDIA,CREATOR_POINT_DISCOUNT,CREATOR_SHARE_PERCENT
+from config import POINT_UNLOCK_HOURS,STAR_UNLOCK_HOURS,STAR_PER_MEDIA,CREATOR_POINT_DISCOUNT,CREATOR_SHARE_PERCENT,CREATOR_DAILY_BASE_PAID_OPENS,CREATOR_MEMBERS_PER_EXTRA_OPEN
 
 async def ensure_user(uid,username=None,name=None):
     p=await get_pool()
@@ -41,6 +41,20 @@ async def vip_allowed(uid,code):
     except: minutes=30
     return datetime.now(timezone.utc)-r.replace(tzinfo=timezone.utc) >= timedelta(minutes=minutes)
 
+async def creator_paid_open_quota(uid):
+    """Daily free paid-code opens for creators: 1 base + 1 per 10 unique paid members."""
+    p=await get_pool()
+    if not await is_creator(uid): return 0,0
+    members=await p.fetchval("""SELECT COUNT(DISTINCT user_id) FROM unlock_transactions
+        WHERE creator_id=$1 AND payment_type IN ('qr','balance') AND user_id<>$1""",uid) or 0
+    quota=int(CREATOR_DAILY_BASE_PAID_OPENS)+(int(members)//int(CREATOR_MEMBERS_PER_EXTRA_OPEN))
+    used=await p.fetchval("SELECT used_count FROM creator_daily_opens WHERE user_id=$1 AND open_date=CURRENT_DATE",uid) or 0
+    return quota,int(used)
+
+async def creator_paid_upload_today(uid):
+    p=await get_pool()
+    return bool(await p.fetchval("SELECT 1 FROM files WHERE owner_id=$1 AND price_idr>0 AND created_at::date=CURRENT_DATE LIMIT 1",uid))
+
 async def unlock(uid,code,media_count,method):
     p=await get_pool()
     async with p.acquire() as c:
@@ -57,6 +71,20 @@ async def unlock(uid,code,media_count,method):
                 await c.execute("UPDATE files SET views=views+1 WHERE code=$1",f["code"])
                 return True,Decimal(0),"vip",0
             price=Decimal(str(f["price_idr"] or 0))
+            creator=bool(user["is_creator"] and user["creator_status"]=="approved")
+            # Creator paid-code access is earned: 1 free paid open per day, plus
+            # one additional free paid open for every 10 unique paid members.
+            # The creator must also have uploaded at least one paid code today.
+            if price>0 and creator and method=='star':
+                return False,Decimal(0),'paid_requires_payment',price
+            if price>0 and creator and method in ("points","star"):
+                if not await creator_paid_upload_today(uid):
+                    return False,Decimal(str(user["points"] if method=="points" else user["stars"] or 0)),"creator_paid_upload_required",0
+                quota,used=await creator_paid_open_quota(uid)
+                if used>=quota:
+                    return False,Decimal(str(user["points"] if method=="points" else user["stars"] or 0)),"creator_daily_quota",0
+            elif price>0 and method in ("points","star"):
+                return False,Decimal(0),"paid_requires_payment",price
             if method=="balance":
                 if price<=0: return False,Decimal(str(user["balance"] or 0)),"invalid_method",Decimal(0)
                 bal=Decimal(str(user["balance"] or 0))
@@ -68,11 +96,10 @@ async def unlock(uid,code,media_count,method):
                 await c.execute("UPDATE files SET views=views+1 WHERE code=$1",code)
                 # Balance access is permanent. Keep payment_type compatible with the existing schema.
                 await c.execute("""INSERT INTO unlock_transactions(user_id,creator_id,code,payment_type,amount,creator_reward_points,creator_income_idr,expires_at)
-                    VALUES($1,$2,$3,'points',$4,1,$5,NOW()+INTERVAL '100 years')""",uid,creator_id,code,price,income)
+                    VALUES($1,$2,$3,'balance',$4,1,$5,NOW()+INTERVAL '100 years')""",uid,creator_id,code,price,income)
                 return True,bal-price,"permanent",price
-            creator=bool(user["is_creator"] and user["creator_status"]=="approved")
             if method=="points":
-                cost=(Decimal(media_count)*Decimal("0.5") if creator else Decimal(media_count)).quantize(Decimal("0.01")); hours=POINT_UNLOCK_HOURS
+                cost=(Decimal(media_count)*Decimal(str(CREATOR_POINT_DISCOUNT)) if creator else Decimal(media_count)).quantize(Decimal("0.01")); hours=POINT_UNLOCK_HOURS
             elif method=="star":
                 cost=(Decimal(media_count)*Decimal(str(STAR_PER_MEDIA))).quantize(Decimal("0.01")); hours=STAR_UNLOCK_HOURS
             else:
@@ -85,7 +112,10 @@ async def unlock(uid,code,media_count,method):
             income=(value*Decimal(str(CREATOR_SHARE_PERCENT))/100).quantize(Decimal("0.01"))
             exp=datetime.now(timezone.utc)+timedelta(hours=POINT_UNLOCK_HOURS if method=="points" else STAR_UNLOCK_HOURS)
             await c.execute("""INSERT INTO unlock_transactions(user_id,creator_id,code,payment_type,amount,creator_reward_points,creator_income_idr,expires_at)
-                VALUES($1,$2,$3,$4,$5,1,$6,$7)""",uid,creator_id,code,method,cost,income,exp)
+                VALUES($1,$2,$3,$4,$5,1,$6,$7)""",uid,creator_id,code,("creator_points" if (price>0 and creator and method=="points") else method),cost,income,exp)
+            if price>0 and creator and method in ("points","star"):
+                await c.execute("""INSERT INTO creator_daily_opens(user_id,open_date,used_count) VALUES($1,CURRENT_DATE,1)
+                    ON CONFLICT(user_id,open_date) DO UPDATE SET used_count=creator_daily_opens.used_count+1""",uid)
             if creator_id!=uid:
                 await c.execute("UPDATE users SET points=points+1,earnings=earnings+$1,total_sales=total_sales+1 WHERE user_id=$2",income,creator_id)
             await c.execute("UPDATE files SET views=views+1 WHERE code=$1",code)

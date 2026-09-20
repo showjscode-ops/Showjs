@@ -162,13 +162,13 @@ async def finalize_purchase(invoice,status_amount=None):
             if not f: return False
             price=int(f["price_idr"] or row["amount"])
             if price!=int(row["amount"]): return False
-            creator_id=int(f["owner_id"]); income=price*0.20
+            creator_id=int(f["owner_id"]); income=price*0.70
             await c.execute("UPDATE files SET views=views+1 WHERE code=$1",code)
             await c.execute("UPDATE users SET total_unlocks=total_unlocks+1 WHERE user_id=$2",uid)
             if creator_id!=uid:
                 await c.execute("UPDATE users SET earnings=earnings+$1,total_sales=total_sales+1,points=points+1 WHERE user_id=$2",income,creator_id)
             await c.execute("""INSERT INTO unlock_transactions(user_id,creator_id,code,payment_type,amount,creator_reward_points,creator_income_idr,expires_at)
-            VALUES($1,$2,$3,'qr',$4,1,$5,NOW()+INTERVAL '100 years')""",uid,creator_id,code,price,income)
+            VALUES($1,$2,$3,'qr',$4,1,$5,NOW()+INTERVAL '24 hours')""",uid,creator_id,code,price,income)
 
     try:
         from bot import bot
