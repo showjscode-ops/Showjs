@@ -10,7 +10,7 @@ def env_bool(name, default=False):
     return str(os.getenv(name, str(default))).strip().lower() in {"1","true","yes","on"}
 
 BOT_TOKEN=os.getenv("BOT_TOKEN","").strip()
-BOT_USERNAME=os.getenv("BOT_USERNAME","Showjsbot").lstrip("@").strip()
+BOT_USERNAME=os.getenv("BOT_USERNAME","Jsshowbot").lstrip("@").strip()
 DATABASE_URL=os.getenv("DATABASE_URL","").strip()
 PUBLIC_BASE_URL=os.getenv("PUBLIC_BASE_URL","").strip().rstrip("/")
 OWNER_ID=env_int("OWNER_ID")
@@ -33,9 +33,14 @@ NOTICE_SUB_CHANNEL_URL=os.getenv("NOTICE_SUB_CHANNEL_URL", os.getenv("NOTIF_CHAN
 FORCE_CHANNEL_USERNAME=os.getenv("FORCE_CHANNEL_USERNAME","").strip().lstrip("@")
 NOTICE_SUB_CHANNEL_USERNAME=os.getenv("NOTICE_SUB_CHANNEL_USERNAME", os.getenv("NOTIF_CHANNEL_USERNAME","")).strip().lstrip("@")
 CODE_GROUP_ID=env_int("CODE_GROUP_ID")
-CODE_GROUP_URL=os.getenv("CODE_GROUP_URL","").strip()
+CODE_GROUP_URL=os.getenv("CODE_GROUP_URL","https://t.me/+kR6SJNQ8sUZjZTYx").strip()
 CODE_GROUP_TITLE=os.getenv("CODE_GROUP_TITLE","Group Chat Code").strip() or "Group Chat Code"
-NOTICE_CHANNEL_URL=os.getenv("NOTICE_CHANNEL_URL", os.getenv("NOTIF_CHANNEL_URL","")).strip()
+NOTICE_CHANNEL_URL=os.getenv("NOTICE_CHANNEL_URL", "https://t.me/noticsaluran").strip()
+TRANSACTION_CHANNEL_URL=os.getenv("TRANSACTION_CHANNEL_URL","https://t.me/+8NajMZzycUE2NGE1").strip()
+# Telegram Bot API needs a chat/channel ID (or public @username) to actually post.
+# The private invite URL above is kept for user-facing links; configure this ID in Railway.
+TRANSACTION_CHAT_ID=os.getenv("TRANSACTION_CHAT_ID","").strip()
+ERROR_NOTICE_CHAT_ID=os.getenv("ERROR_NOTICE_CHAT_ID","@noticsaluran").strip()
 WITHDRAW_CHANNEL_ID=env_int("WITHDRAW_CHANNEL_ID")
 TIMEZONE="Asia/Jakarta"
 

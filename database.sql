@@ -84,7 +84,7 @@ CREATE TABLE IF NOT EXISTS star_transactions(
 
 CREATE TABLE IF NOT EXISTS purchases(
  id BIGSERIAL PRIMARY KEY,user_id BIGINT NOT NULL REFERENCES users(user_id) ON DELETE CASCADE,
- purchase_type TEXT NOT NULL CHECK(purchase_type IN('points','stars','vip')),
+ purchase_type TEXT NOT NULL CHECK(purchase_type IN('points','stars','vip','creator','deposit','file')),
  quantity NUMERIC(18,2) NOT NULL DEFAULT 0,
  amount BIGINT NOT NULL,
  provider TEXT NOT NULL,
@@ -143,3 +143,11 @@ INSERT INTO settings(key,value) VALUES
  ('payment_manual_enabled','on'),
  ('payment_balance_enabled','on')
 ON CONFLICT(key) DO NOTHING;
+
+ALTER TABLE purchases DROP CONSTRAINT IF EXISTS purchases_purchase_type_check;
+ALTER TABLE purchases ADD CONSTRAINT purchases_purchase_type_check CHECK(purchase_type IN('points','stars','vip','creator','deposit','file'));
+ALTER TABLE purchases ADD COLUMN IF NOT EXISTS metadata JSONB NOT NULL DEFAULT '{}'::jsonb;
+ALTER TABLE purchases ADD COLUMN IF NOT EXISTS payment_message_id BIGINT;
+ALTER TABLE purchases ADD COLUMN IF NOT EXISTS expires_at TIMESTAMPTZ;
+ALTER TABLE manual_deposits ADD COLUMN IF NOT EXISTS qr_message_id BIGINT;
+ALTER TABLE manual_deposits ADD COLUMN IF NOT EXISTS proof_message_id BIGINT;
