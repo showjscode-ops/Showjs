@@ -65,8 +65,9 @@ async def deppay(c,state:FSMContext):
  r,status=await create_purchase(c.from_user.id,'deposit',1,amount,provider,c.from_user.full_name)
  if not r:return await c.answer('❌ Pembayaran sedang ditutup.',show_alert=True)
  data=qr_bytes(r.get('qr_string')); text=f'💳 <b>DEPOSIT</b>\n\n💰 {fmt(amount)}\n🏦 {provider.upper()}\n🧾 <code>{r["invoice_id"]}</code>\n\nSaldo akan masuk otomatis setelah pembayaran terverifikasi.'
- if data: await c.message.answer_photo(BufferedInputFile(data,filename='deposit.png'),caption=text,parse_mode='HTML')
- else: await c.message.answer(text,parse_mode='HTML')
+ kb=InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text='💳 Buka Pembayaran',url=r['payment_url'])]]) if r.get('payment_url') else None
+ if data: await c.message.answer_photo(BufferedInputFile(data,filename='deposit.png'),caption=text,parse_mode='HTML',reply_markup=kb)
+ else: await c.message.answer(text,parse_mode='HTML',reply_markup=kb)
 
 @router.callback_query(F.data.startswith('choosepay:'))
 async def choose(c):
@@ -79,12 +80,28 @@ async def choose(c):
 
 @router.callback_query(F.data.startswith('provider:'))
 async def provider(c):
- _,payload,provider=c.data.split(':',2); typ,qty,amount=payload.split(':')
- r,status=await create_purchase(c.from_user.id,typ,int(qty),int(amount),provider,c.from_user.full_name)
- if not r:return await c.answer('❌ Provider sedang ditutup.',show_alert=True)
- data=qr_bytes(r.get('qr_string')); text=f'💳 <b>PAYMENT</b>\n\n📦 {qty}\n💰 {fmt(amount)}\n🏦 {provider.upper()}\n🧾 <code>{r["invoice_id"]}</code>'
- if data: await c.message.answer_photo(BufferedInputFile(data,filename='payment.png'),caption=text,parse_mode='HTML')
- else: await c.message.answer(text,parse_mode='HTML')
+ parts = (c.data or '').split(':')
+ if len(parts) != 5 or parts[0] != 'provider':
+  return await c.answer('❌ Data pembayaran tidak valid. Silakan pilih paket lagi.', show_alert=True)
+ _, typ, qty, amount, provider_name = parts
+ try:
+  qty_i = int(qty)
+  amount_i = int(amount)
+ except ValueError:
+  return await c.answer('❌ Data nominal pembayaran tidak valid.', show_alert=True)
+ provider_name = provider_name.strip().lower()
+ if provider_name not in {'bayargg', 'cashi'}:
+  return await c.answer('❌ Provider pembayaran tidak valid.', show_alert=True)
+ if not await enabled(provider_name):
+  return await c.answer('❌ Provider sedang ditutup oleh admin.', show_alert=True)
+ r,status=await create_purchase(c.from_user.id, typ, qty_i, amount_i, provider_name, c.from_user.full_name)
+ if not r:
+  msg = '❌ Pembayaran sedang ditutup.' if status == 'disabled' else '❌ Gagal membuat pembayaran. Coba lagi.'
+  return await c.answer(msg, show_alert=True)
+ data=qr_bytes(r.get('qr_string')); text=f'💳 <b>PAYMENT</b>\n\n📦 {qty_i}\n💰 {fmt(amount_i)}\n🏦 {provider_name.upper()}\n🧾 <code>{r["invoice_id"]}</code>'
+ kb=InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text='💳 Buka Pembayaran',url=r['payment_url'])]]) if r.get('payment_url') else None
+ if data: await c.message.answer_photo(BufferedInputFile(data,filename='payment.png'),caption=text,parse_mode='HTML',reply_markup=kb)
+ else: await c.message.answer(text,parse_mode='HTML',reply_markup=kb)
 
 @router.callback_query(F.data.startswith('manualpkg:'))
 async def manualpkg(c,state:FSMContext):
