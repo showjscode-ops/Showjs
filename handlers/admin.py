@@ -55,6 +55,7 @@ async def admin_command(m):
     )
 class AdminState(StatesGroup):
     creator=State(); broadcast=State(); edit_code=State(); edit_title=State(); edit_tags=State(); edit_price=State(); user_action=State(); move=State(); grant_open_user=State(); grant_open_code=State(); role_user=State()
+    b2_name=State(); b2_region=State(); b2_bucket=State(); b2_key_id=State(); b2_app_key=State()
 
 def admin(uid): return is_config_admin(uid)
 async def val(key): return str(await (await get_pool()).fetchval("SELECT value FROM settings WHERE key=$1",key) or "off")
@@ -138,13 +139,160 @@ async def stats(c):
 @router.callback_query(F.data=='adm:b2')
 async def b2menu(c):
  if not await admin_access(c.from_user.id): return
+ await b2_pool.reload_from_db()
+ p=await get_pool()
+ preferred=int(await p.fetchval("SELECT value FROM settings WHERE key='preferred_b2_account'") or 0)
  rows=[]
- preferred=int(await (await get_pool()).fetchval("SELECT value FROM settings WHERE key='preferred_b2_account'") or 0)
+ dbrows=await p.fetch("SELECT account_id,name,bucket,region,enabled FROM b2_storage_accounts ORDER BY account_id")
+ dbmap={int(r['account_id']):r for r in dbrows}
  for a in b2_pool.accounts:
   star=' ⭐' if preferred==a.account_id else ''
-  rows.append([InlineKeyboardButton(text=f'🗄 B2 #{a.account_id} {a.bucket}{star}',callback_data=f'b2select:{a.account_id}')])
- rows += [[InlineKeyboardButton(text='🔄 Ganti Storage / Target Upload',callback_data='b2choose')],[InlineKeyboardButton(text='🩺 Cek Semua',callback_data='b2health')],[InlineKeyboardButton(text='📦 Kapasitas (MB)',callback_data='b2stats')],[InlineKeyboardButton(text='🔄 AUTO / FAILOVER',callback_data='b2auto')],[InlineKeyboardButton(text='🔙 Panel',callback_data='adm:panel')]]
- await c.message.edit_text(f'🗄 <b>B2 STORAGE</b>\\n\\nConfigured: {len(b2_pool.accounts)}/10',parse_mode='HTML',reply_markup=InlineKeyboardMarkup(inline_keyboard=rows))
+  label=(a.name or a.bucket or f'B2 #{a.account_id}')[:28]
+  rows.append([InlineKeyboardButton(text=f'🗄 #{a.account_id} {label}{star}',callback_data=f'b2select:{a.account_id}')])
+  if a.account_id in dbmap:
+   rows.append([InlineKeyboardButton(text=f'🗑 Hapus B2 #{a.account_id}',callback_data=f'b2del:{a.account_id}')])
+ rows += [
+   [InlineKeyboardButton(text='➕ Tambah Storage Backblaze',callback_data='b2add')],
+   [InlineKeyboardButton(text='🔄 Ganti Storage / Target Upload',callback_data='b2choose')],
+   [InlineKeyboardButton(text='🩺 Cek Semua',callback_data='b2health'),InlineKeyboardButton(text='📦 Kapasitas (MB)',callback_data='b2stats')],
+   [InlineKeyboardButton(text='🔄 AUTO / FAILOVER',callback_data='b2auto')],
+   [InlineKeyboardButton(text='🔙 Panel',callback_data='adm:panel')]
+ ]
+ await c.message.edit_text(
+   f'🗄 <b>B2 STORAGE</b>\n\n'
+   f'Configured: <b>{len(b2_pool.accounts)}/10</b>\n'
+   f'➕ Storage baru bisa ditambahkan langsung dari panel ini tanpa membuka Railway.',
+   parse_mode='HTML',reply_markup=InlineKeyboardMarkup(inline_keyboard=rows)
+ )
+
+@router.callback_query(F.data=='b2add')
+async def b2add_start(c,state: FSMContext):
+ if not await admin_access(c.from_user.id): return await c.answer('No access',show_alert=True)
+ p=await get_pool()
+ used={int(r['account_id']) for r in await p.fetch("SELECT account_id FROM b2_storage_accounts")}
+ used.update(a.account_id for a in b2_pool.accounts)
+ free=next((i for i in range(1,11) if i not in used),None)
+ if free is None:
+  return await c.answer('❌ Maksimal 10 storage B2 sudah terpakai.',show_alert=True)
+ await state.update_data(b2_account_id=free)
+ await state.set_state(AdminState.b2_name)
+ await c.message.answer(
+   f'➕ <b>TAMBAH BACKBLAZE B2 #{free}</b>\n\n'
+   'Kirim nama storage, contoh: <code>Backup Utama</code>',
+   parse_mode='HTML'
+ )
+ await c.answer()
+
+@router.message(AdminState.b2_name)
+async def b2add_name(m,state: FSMContext):
+ if not await admin_access(m.from_user.id): return
+ name=(m.text or '').strip()
+ if not name: return await m.answer('❌ Nama tidak boleh kosong.')
+ await state.update_data(b2_name=name[:80])
+ await state.set_state(AdminState.b2_region)
+ await m.answer('🌎 Kirim <b>Region</b> Backblaze, contoh: <code>us-east-005</code>',parse_mode='HTML')
+
+@router.message(AdminState.b2_region)
+async def b2add_region(m,state: FSMContext):
+ if not await admin_access(m.from_user.id): return
+ region=(m.text or '').strip()
+ if not re.match(r'^[A-Za-z0-9._-]{2,80}$',region):
+  return await m.answer('❌ Region tidak valid.')
+ await state.update_data(b2_region=region)
+ await state.set_state(AdminState.b2_bucket)
+ await m.answer('🪣 Kirim <b>Bucket Name</b> Backblaze.',parse_mode='HTML')
+
+@router.message(AdminState.b2_bucket)
+async def b2add_bucket(m,state: FSMContext):
+ if not await admin_access(m.from_user.id): return
+ bucket=(m.text or '').strip()
+ if not bucket: return await m.answer('❌ Bucket tidak boleh kosong.')
+ await state.update_data(b2_bucket=bucket[:200])
+ await state.set_state(AdminState.b2_key_id)
+ await m.answer('🔑 Kirim <b>Application Key ID</b>.',parse_mode='HTML')
+
+@router.message(AdminState.b2_key_id)
+async def b2add_key_id(m,state: FSMContext):
+ if not await admin_access(m.from_user.id): return
+ key=(m.text or '').strip()
+ if not key: return await m.answer('❌ Key ID tidak boleh kosong.')
+ await state.update_data(b2_key_id=key)
+ await state.set_state(AdminState.b2_app_key)
+ await m.answer('🔐 Kirim <b>Application Key</b>. Pesan ini hanya dipakai untuk menyimpan konfigurasi B2.',parse_mode='HTML')
+
+@router.message(AdminState.b2_app_key)
+async def b2add_app_key(m,state: FSMContext):
+ if not await admin_access(m.from_user.id): return
+ app_key=(m.text or '').strip()
+ if not app_key: return await m.answer('❌ Application Key tidak boleh kosong.')
+ d=await state.get_data()
+ aid=int(d.get('b2_account_id') or 0)
+ name=str(d.get('b2_name') or '')
+ region=str(d.get('b2_region') or '')
+ bucket=str(d.get('b2_bucket') or '')
+ key_id=str(d.get('b2_key_id') or '')
+ endpoint=f'https://s3.{region}.backblazeb2.com'
+ p=await get_pool()
+ try:
+  await p.execute(
+   '''INSERT INTO b2_storage_accounts(account_id,name,endpoint,region,bucket,key_id,application_key,enabled,updated_at)
+      VALUES($1,$2,$3,$4,$5,$6,$7,TRUE,NOW())
+      ON CONFLICT(account_id) DO UPDATE SET name=EXCLUDED.name,endpoint=EXCLUDED.endpoint,
+        region=EXCLUDED.region,bucket=EXCLUDED.bucket,key_id=EXCLUDED.key_id,
+        application_key=EXCLUDED.application_key,enabled=TRUE,updated_at=NOW()''',
+   aid,name,endpoint,region,bucket,key_id,app_key
+  )
+  await b2_pool.reload_from_db()
+  try:
+   h=await b2_pool.health(aid)
+   status=f'🟢 Terhubung • {h["latency_ms"]} ms'
+  except Exception as exc:
+   status=f'🟠 Tersimpan, tetapi tes koneksi gagal: {html.escape(str(exc)[:180])}'
+  await state.clear()
+  await m.answer(
+   f'✅ <b>STORAGE B2 #{aid} DITAMBAHKAN</b>\n\n'
+   f'🏷 {html.escape(name)}\n'
+   f'🪣 <code>{html.escape(bucket)}</code>\n'
+   f'🌎 <code>{html.escape(region)}</code>\n'
+   f'{status}\n\n'
+   'Storage sekarang bisa dipilih dari panel admin tanpa Railway.',
+   parse_mode='HTML',
+   reply_markup=InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text='🗄 B2 Storage',callback_data='adm:b2')]])
+  )
+ except Exception as exc:
+  await state.clear()
+  await m.answer(f'❌ Gagal menyimpan B2: <code>{html.escape(str(exc)[:500])}</code>',parse_mode='HTML')
+
+@router.callback_query(F.data.startswith('b2del:'))
+async def b2del_confirm(c):
+ if not await admin_access(c.from_user.id): return await c.answer('No access',show_alert=True)
+ aid=int(c.data.split(':',1)[1])
+ p=await get_pool()
+ r=await p.fetchrow("SELECT account_id,name,bucket FROM b2_storage_accounts WHERE account_id=$1",aid)
+ if not r: return await c.answer('Storage ini bukan konfigurasi panel.',show_alert=True)
+ await c.message.edit_text(
+   f'⚠️ <b>HAPUS STORAGE B2 #{aid}?</b>\n\n'
+   f'🏷 {html.escape(r["name"] or "-")}\n'
+   f'🪣 <code>{html.escape(r["bucket"])}</code>\n\n'
+   'Object yang sudah tersimpan di B2 <b>tidak akan dihapus</b>. Yang dihapus hanya konfigurasi akun dari panel.',
+   parse_mode='HTML',
+   reply_markup=InlineKeyboardMarkup(inline_keyboard=[
+     [InlineKeyboardButton(text='⚠️ Ya, Hapus Konfigurasi',callback_data=f'b2delyes:{aid}')],
+     [InlineKeyboardButton(text='❌ Batal',callback_data='adm:b2')]
+   ])
+ )
+
+@router.callback_query(F.data.startswith('b2delyes:'))
+async def b2del_yes(c):
+ if not await admin_access(c.from_user.id): return await c.answer('No access',show_alert=True)
+ aid=int(c.data.split(':',1)[1])
+ p=await get_pool()
+ await p.execute("DELETE FROM b2_storage_accounts WHERE account_id=$1",aid)
+ preferred=int(await p.fetchval("SELECT value FROM settings WHERE key='preferred_b2_account'") or 0)
+ if preferred==aid: await setval('preferred_b2_account','0')
+ await b2_pool.reload_from_db()
+ await c.answer(f'B2 #{aid} dihapus.')
+ await b2menu(c)
 
 @router.callback_query(F.data.startswith('b2select:'))
 async def b2select(c):

@@ -6,7 +6,7 @@ from aiogram.types import Message,CallbackQuery,InlineKeyboardMarkup,InlineKeybo
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import StatesGroup,State
 from database import get_pool
-from config import MAX_MEDIA,BOT_USERNAME,PAID_CODE_MIN_IDR,PAID_CODE_MAX_IDR
+from config import MAX_MEDIA,BOT_USERNAME,PAID_CODE_MIN_IDR,PAID_CODE_MAX_IDR,MAX_MEDIA_SIZE_MB,MAX_MEDIA_SIZE_BYTES,TELEGRAM_API_BASE
 from utils.b2_storage import b2_pool
 from utils.callback_loading import loading
 from utils.economy import is_creator
@@ -73,18 +73,34 @@ async def receive(m,state):
             return
         fd,path=tempfile.mkstemp(prefix='pastele_'); os.close(fd)
         try:
-            # Telegram's standard cloud Bot API limits getFile/downloads to about 20 MB.
-            # Detect this before get_file so the user gets a clear explanation instead of
-            # the generic 'Bad Request: file is too big' error. A local Bot API server
-            # can be used later if larger Telegram-origin files are required.
-            TELEGRAM_GETFILE_LIMIT = 20 * 1024 * 1024
-            if size and size > TELEGRAM_GETFILE_LIMIT:
+            # Application limit: 100 MB by default.
+            # Files above ~20 MB require a Local Bot API Server because the
+            # standard Telegram cloud Bot API cannot download them with getFile.
+            if size and size > MAX_MEDIA_SIZE_BYTES:
                 msg = (
-                    '❌ <b>File terlalu besar untuk diambil oleh Bot Telegram.</b>\n\n'
+                    '❌ <b>Media terlalu besar.</b>\n\n'
                     f'📦 Ukuran: <b>{size / 1024 / 1024:.1f} MB</b>\n'
-                    '⚠️ Batas download Bot API cloud saat ini sekitar <b>20 MB</b>.\n\n'
-                    'Kirim file di bawah batas tersebut, atau gunakan Local Bot API Server '
-                    'jika ingin mendukung file yang lebih besar.'
+                    f'📏 Maksimal: <b>{MAX_MEDIA_SIZE_MB} MB</b> per media.\n\n'
+                    'Silakan kirim media yang ukurannya lebih kecil.'
+                )
+                if status_id:
+                    try:
+                        await m.bot.edit_message_text(chat_id=m.chat.id, message_id=status_id, text=msg, parse_mode='HTML', reply_markup=media_kb())
+                    except Exception:
+                        await m.answer(msg, parse_mode='HTML', reply_markup=media_kb())
+                else:
+                    await m.answer(msg, parse_mode='HTML', reply_markup=media_kb())
+                try: await m.delete()
+                except: pass
+                return
+
+            if size and size > 20 * 1024 * 1024 and not TELEGRAM_API_BASE:
+                msg = (
+                    '❌ <b>Media lebih dari 20 MB belum bisa di-download bot.</b>\n\n'
+                    f'📦 Ukuran: <b>{size / 1024 / 1024:.1f} MB</b>\n'
+                    f'📏 Batas aplikasi: <b>{MAX_MEDIA_SIZE_MB} MB</b>.\n\n'
+                    'Untuk menerima media 21–100 MB, aktifkan <b>Local Bot API Server</b> '
+                    'dan isi environment variable <code>TELEGRAM_API_BASE</code>.'
                 )
                 if status_id:
                     try:
