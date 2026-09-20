@@ -60,20 +60,22 @@ async def open_choices(c,code,f):
     uid=c.from_user.id; n=int(f['media_count']); price=int(f['price_idr'] or 0)
     if await is_vip(uid):
         kb=InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text='💎 Buka Gratis (VIP)',callback_data=f'openvip:{code}')],[InlineKeyboardButton(text='🔙 Kembali',callback_data='home')]])
-    elif price>0:
-        rows=[]
-        if await enabled('payment_balance'): rows.append([InlineKeyboardButton(text=f'💰 Saldo • {fmt(price)}',callback_data=f'openbal:{code}')])
-        if await enabled('bayargg'): rows.append([InlineKeyboardButton(text='⚡ BayarGG QR',callback_data=f'payfile:bayargg:{code}')])
-        if await enabled('cashi'): rows.append([InlineKeyboardButton(text='💳 Cashi QR',callback_data=f'payfile:cashi:{code}')])
-        if await enabled('manual'): rows.append([InlineKeyboardButton(text='🧾 QR Manual',callback_data=f'payfile:manual:{code}')])
-        rows.append([InlineKeyboardButton(text='💳 Deposit',callback_data='deposit')])
-        kb=InlineKeyboardMarkup(inline_keyboard=rows)
     else:
-        creator=await is_creator(uid); pc=n*0.5 if creator else n; sc=n*STAR_PER_MEDIA
-        kb=InlineKeyboardMarkup(inline_keyboard=[
-          [InlineKeyboardButton(text=f'🪙 {pc:g} Poin',callback_data=f'unlockp:{code}')],
-          [InlineKeyboardButton(text=f'⭐ {sc:g} Star',callback_data=f'unlocks:{code}')],
-          [InlineKeyboardButton(text='🔙 Kembali',callback_data='home')]])
+        creator=await is_creator(uid)
+        pc=n*0.5 if creator else n
+        sc=n*STAR_PER_MEDIA
+        rows=[
+          [InlineKeyboardButton(text=f'🪙 Buka dengan {pc:g} Poin',callback_data=f'unlockp:{code}')],
+          [InlineKeyboardButton(text=f'⭐ Buka dengan {sc:g} Star',callback_data=f'unlocks:{code}')],
+        ]
+        if price>0 and await enabled('payment_balance'):
+            rows.append([InlineKeyboardButton(text=f'💰 Buka dengan Saldo • {fmt(price)}',callback_data=f'openbal:{code}')])
+        if price>0:
+            if await enabled('bayargg'): rows.append([InlineKeyboardButton(text='⚡ BayarGG QR',callback_data=f'payfile:bayargg:{code}')])
+            if await enabled('cashi'): rows.append([InlineKeyboardButton(text='💳 Cashi QR',callback_data=f'payfile:cashi:{code}')])
+            if await enabled('manual'): rows.append([InlineKeyboardButton(text='🧾 QR Manual',callback_data=f'payfile:manual:{code}')])
+        rows.append([InlineKeyboardButton(text='🔙 Kembali',callback_data='home')])
+        kb=InlineKeyboardMarkup(inline_keyboard=rows)
     await c.message.edit_text(
       f"🔐 <b>OPEN CODE</b>\n\n📝 {html.escape(f['title'] or 'Untitled')}\n🔑 <code>{html.escape(code)}</code>\n📦 {n} media\n"
       +(f"💰 {fmt(price)}\n\nPilih pembayaran:" if price else "\nPilih cara membuka:"),
@@ -152,14 +154,24 @@ async def deliver_page(c,code,page):
       "Share this code with your friends to let them unlock these media.",
       parse_mode='HTML',reply_markup=page_kb(code,page,len(media)))
 
+async def _insufficient_notice(c,method,cost):
+    labels={
+      'points':('🪙 Poin tidak cukup.', '🛒 Buy Poin', 'buy_points'),
+      'star':('⭐ Star tidak cukup.', '🛒 Buy Star', 'buy_stars'),
+      'balance':('💰 Saldo tidak cukup.', '💳 Deposit', 'deposit'),
+    }
+    title,button,cb=labels.get(method,('❌ Saldo tidak cukup.','💳 Deposit','deposit'))
+    extra=f'\n\nBiaya: <b>{float(cost):g}</b> {"Poin" if method=="points" else "Star" if method=="star" else "Saldo"}.' if cost else ''
+    await c.message.answer(title+extra,parse_mode='HTML',reply_markup=InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text=button,callback_data=cb)],[InlineKeyboardButton(text='🔙 Kembali',callback_data='home')]]))
+    return await c.answer('❌ Saldo tidak cukup.',show_alert=True)
+
 async def open_media(c,method):
     code=c.data.split(':',1)[1]; f=await get_file(code)
     if not f:return await c.answer('❌ Code tidak ditemukan.',show_alert=True)
-    price=int(f['price_idr'] or 0)
-    if price>0:return await c.answer('Paid code menggunakan Saldo atau pembayaran QR.',show_alert=True)
     ok,new,reason,cost=await unlock(c.from_user.id,code,int(f['media_count']),method)
     if not ok:
-        msg={'insufficient':'❌ Saldo tidak cukup.','cooldown':'⏳ VIP harus menunggu 30 menit sebelum membuka code ini lagi.'}.get(reason,'❌ Tidak dapat membuka media.')
+        if reason=='insufficient': return await _insufficient_notice(c,method,cost)
+        msg='⏳ VIP harus menunggu 30 menit sebelum membuka code ini lagi.' if reason=='cooldown' else ('💰 Paid code membutuhkan Saldo untuk metode Saldo.' if reason=='paid_balance_only' else '❌ Tidak dapat membuka media.')
         return await c.answer(msg,show_alert=True)
     await c.answer('✅ Berhasil dibuka!')
     await deliver_page(c,code,0)
@@ -181,8 +193,10 @@ async def us(c): await open_media(c,'star')
 async def openbal(c):
     code=c.data.split(':',1)[1]; f=await get_file(code)
     if not f:return await c.answer('❌ Code tidak ditemukan.',show_alert=True)
-    ok,_,reason,_=await unlock(c.from_user.id,code,int(f['media_count']),'balance')
-    if not ok:return await c.answer('❌ Saldo tidak cukup.',show_alert=True)
+    ok,_,reason,cost=await unlock(c.from_user.id,code,int(f['media_count']),'balance')
+    if not ok:
+        if reason=='insufficient': return await _insufficient_notice(c,'balance',cost)
+        return await c.answer('❌ Pembayaran dengan Saldo gagal.',show_alert=True)
     await c.answer('✅ Pembayaran berhasil!')
     await deliver_page(c,code,0)
 

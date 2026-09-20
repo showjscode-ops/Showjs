@@ -69,4 +69,4 @@ async def points_help_ok(c):
  await c.answer()
 
 async def send_points_help(message):
- return await message.answer(POINTS_HELP_TEXT,reply_markup=InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text="❓ Help",callback_data="help")]]))
+ return await message.answer(POINTS_HELP_TEXT,reply_markup=InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text="❓ Help",callback_data="help")],[InlineKeyboardButton(text="✅ Done",callback_data="points_help_ok")]]))
