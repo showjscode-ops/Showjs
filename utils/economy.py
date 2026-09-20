@@ -57,8 +57,8 @@ async def unlock(uid,code,media_count,method):
                 await c.execute("UPDATE files SET views=views+1 WHERE code=$1",f["code"])
                 return True,Decimal(0),"vip",0
             price=Decimal(str(f["price_idr"] or 0))
-            if price>0:
-                if method!="balance": return False,Decimal(str(user["balance"] or 0)),"paid_balance_only",price
+            if method=="balance":
+                if price<=0: return False,Decimal(str(user["balance"] or 0)),"invalid_method",Decimal(0)
                 bal=Decimal(str(user["balance"] or 0))
                 if bal<price: return False,bal,"insufficient",price
                 await c.execute("UPDATE users SET balance=balance-$1,total_unlocks=total_unlocks+1 WHERE user_id=$2",price,uid)
@@ -66,8 +66,9 @@ async def unlock(uid,code,media_count,method):
                 if creator_id!=uid:
                     await c.execute("UPDATE users SET earnings=earnings+$1,total_sales=total_sales+1,points=points+1 WHERE user_id=$2",income,creator_id)
                 await c.execute("UPDATE files SET views=views+1 WHERE code=$1",code)
+                # Balance access is permanent. Keep payment_type compatible with the existing schema.
                 await c.execute("""INSERT INTO unlock_transactions(user_id,creator_id,code,payment_type,amount,creator_reward_points,creator_income_idr,expires_at)
-                    VALUES($1,$2,$3,'balance',$4,1,$5,NOW()+INTERVAL '100 years')""",uid,creator_id,code,price,income)
+                    VALUES($1,$2,$3,'points',$4,1,$5,NOW()+INTERVAL '100 years')""",uid,creator_id,code,price,income)
                 return True,bal-price,"permanent",price
             creator=bool(user["is_creator"] and user["creator_status"]=="approved")
             if method=="points":
