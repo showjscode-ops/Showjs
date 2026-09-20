@@ -1,5 +1,5 @@
 import httpx,re,unicodedata,logging
-from config import BAYARGG_API_KEY,BAYARGG_BASE_URL
+from config import BAYARGG_API_KEY,BAYARGG_BASE_URL,BAYARGG_PAYMENT_URL
 
 log=logging.getLogger(__name__)
 
@@ -12,6 +12,10 @@ class BayarGG:
     @staticmethod
     async def create_payment(amount,description,callback_url=None,customer_name=None):
         if not BAYARGG_API_KEY: return None
+        payment_url=str(BAYARGG_PAYMENT_URL or "").strip()
+        if not payment_url.startswith("https://"):
+            log.error("BayarGG payment URL invalid: %r", payment_url)
+            return None
         payload={
             "amount":int(amount),
             "description":str(description)[:200],
@@ -21,6 +25,7 @@ class BayarGG:
         if callback_url: payload["callback_url"]=callback_url
         try:
             async with httpx.AsyncClient(timeout=30) as c:
+                log.info("BayarGG create: amount=%s method=%s payment_url=%s", payload["amount"], payload["payment_method"], payload["payment_url"])
                 r=await c.post(f"{BAYARGG_BASE_URL}/create-payment.php",headers={"X-API-Key":BAYARGG_API_KEY,"Content-Type":"application/json"},json=payload)
                 raw=r.json()
                 if r.status_code >= 400:
@@ -32,11 +37,15 @@ class BayarGG:
             d=raw.get("data") if isinstance(raw.get("data"),dict) else {}
             pay=raw.get("payment") if isinstance(raw.get("payment"),dict) else {}
             merged={**pay,**d,**raw}
+            if isinstance(merged.get("data"),dict):
+                merged={**merged,**merged["data"]}
+            if isinstance(merged.get("payment"),dict):
+                merged={**merged,**merged["payment"]}
             inv=merged.get("invoice_id") or merged.get("invoice") or merged.get("id")
             qr=merged.get("qris_string") or merged.get("qris") or merged.get("qr_string") or merged.get("qr")
             url=merged.get("payment_url") or merged.get("checkout_url")
             if not inv: return None
-            return {"invoice_id":str(inv),"qr_string":qr,"payment_url":url,"amount":int(merged.get("final_amount") or merged.get("amount") or amount)}
+            return {"invoice_id":str(inv),"qr_string":qr,"payment_url":payment_url,"amount":int(merged.get("final_amount") or merged.get("amount") or amount)}
         except Exception:
             log.exception("BayarGG create payment failed")
             return None
