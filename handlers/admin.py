@@ -142,13 +142,25 @@ async def b2menu(c):
  for a in b2_pool.accounts:
   star=' ⭐' if preferred==a.account_id else ''
   rows.append([InlineKeyboardButton(text=f'🗄 B2 #{a.account_id} {a.bucket}{star}',callback_data=f'b2select:{a.account_id}')])
- rows += [[InlineKeyboardButton(text='🩺 Cek Semua',callback_data='b2health')],[InlineKeyboardButton(text='📦 Kapasitas',callback_data='b2stats')],[InlineKeyboardButton(text='🔄 AUTO / FAILOVER',callback_data='b2auto')],[InlineKeyboardButton(text='🔙 Panel',callback_data='adm:panel')]]
+ rows += [[InlineKeyboardButton(text='🔄 Ganti Storage / Target Upload',callback_data='b2choose')],[InlineKeyboardButton(text='🩺 Cek Semua',callback_data='b2health')],[InlineKeyboardButton(text='📦 Kapasitas (MB)',callback_data='b2stats')],[InlineKeyboardButton(text='🔄 AUTO / FAILOVER',callback_data='b2auto')],[InlineKeyboardButton(text='🔙 Panel',callback_data='adm:panel')]]
  await c.message.edit_text(f'🗄 <b>B2 STORAGE</b>\\n\\nConfigured: {len(b2_pool.accounts)}/10',parse_mode='HTML',reply_markup=InlineKeyboardMarkup(inline_keyboard=rows))
 
 @router.callback_query(F.data.startswith('b2select:'))
 async def b2select(c):
  if not await admin_access(c.from_user.id): return
  aid=int(c.data.split(':')[1]); await setval('preferred_b2_account',aid); await c.answer(f'B2 #{aid} menjadi target upload.'); await b2menu(c)
+
+@router.callback_query(F.data=='b2choose')
+async def b2choose(c):
+ if not await admin_access(c.from_user.id): return await c.answer('No access',show_alert=True)
+ preferred=int(await (await get_pool()).fetchval("SELECT value FROM settings WHERE key='preferred_b2_account'") or 0)
+ rows=[]
+ for a in b2_pool.accounts:
+  mark=' ✅ AKTIF' if preferred==a.account_id else ''
+  rows.append([InlineKeyboardButton(text=f'🗄 B2 #{a.account_id} • {a.bucket}{mark}',callback_data=f'b2select:{a.account_id}')])
+ rows.append([InlineKeyboardButton(text='🔄 AUTO / FAILOVER',callback_data='b2auto')])
+ rows.append([InlineKeyboardButton(text='🔙 B2 Storage',callback_data='adm:b2')])
+ await c.message.edit_text('🔄 <b>GANTI STORAGE BACKBLAZE</b>\n\nPilih B2 yang akan menjadi target utama upload.\n\nJika target gagal, sistem tetap mencoba storage B2 lain yang tersedia.',parse_mode='HTML',reply_markup=InlineKeyboardMarkup(inline_keyboard=rows))
 
 @router.callback_query(F.data=='b2auto')
 async def b2auto(c):
@@ -171,8 +183,8 @@ async def b2stats(c):
  lines=['📦 <b>B2 CAPACITY</b>']
  for a in b2_pool.accounts:
   try:
-   s=await b2_pool.stats(a.account_id); gb=s['bytes']/1024**3
-   lines.append(f"🗄 B2 #{a.account_id}: {s['objects']} objects • {gb:.2f} GB")
+   s=await b2_pool.stats(a.account_id); b=s['bytes']; mb=b/1024**2; gb=b/1024**3
+   lines.append(f"🗄 B2 #{a.account_id} • {s['objects']} objects\n   📦 {mb:,.2f} MB • {gb:,.2f} GB")
   except Exception as e: lines.append(f"🔴 B2 #{a.account_id}: {str(e)[:80]}")
  await c.message.edit_text('\\n'.join(lines),parse_mode='HTML',reply_markup=InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text='🔙 B2',callback_data='adm:b2')]]))
 
@@ -250,12 +262,260 @@ async def users(c):
  buttons.append([InlineKeyboardButton(text='🔙 Panel',callback_data='adm:panel')])
  await c.message.edit_text(text,parse_mode='HTML',reply_markup=InlineKeyboardMarkup(inline_keyboard=buttons))
 
-@router.callback_query(F.data=='adm:codes')
+@router.callback_query(F.data.startswith('adm:codes'))
 async def codes(c):
- if not await admin_access(c.from_user.id): return
- rows=await (await get_pool()).fetch("SELECT code,title,price_idr,views,likes,hates,favorites FROM files ORDER BY id DESC LIMIT 15")
- text='🗂 <b>CODES</b>\\n\\n'+('\\n'.join(f"<code>{r['code']}</code> • {html.escape(r['title'] or '-') } • Rp{int(r['price_idr'] or 0):,} • 👁{r['views']} 👍{r['likes']} 👎{r['hates']} ⭐{r['favorites']}" for r in rows).replace(',','.') if rows else 'Kosong')
- await c.message.edit_text(text,parse_mode='HTML',reply_markup=InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text='🔙 Panel',callback_data='adm:panel')]]))
+    if not await admin_access(c.from_user.id):
+        return await c.answer('No access', show_alert=True)
+    try:
+        page = int(c.data.split(':')[2]) if len(c.data.split(':')) > 2 else 0
+    except Exception:
+        page = 0
+    page = max(0, page)
+    p = await get_pool()
+    rows = await p.fetch(
+        """SELECT code,title,price_idr,views,likes,hates,favorites,active
+           FROM files ORDER BY id DESC LIMIT 10 OFFSET $1""",
+        page * 10,
+    )
+    lines = [f'🗂 <b>CODE MANAGEMENT</b> • Page {page+1}\n']
+    if rows:
+        for r in rows:
+            price = int(r['price_idr'] or 0)
+            price_txt = f'Rp{price:,}'.replace(',', '.') if price else 'FREE'
+            status = '🟢' if r['active'] else '🔴'
+            lines.append(
+                f"{status} <code>{html.escape(r['code'])}</code> • "
+                f"<b>{html.escape(r['title'] or '-')}</b>\n"
+                f"💰 {price_txt} • 👁{r['views']} 👍{r['likes']} "
+                f"👎{r['hates']} ⭐{r['favorites']}"
+            )
+    else:
+        lines.append('Tidak ada code.')
+
+    buttons = []
+    for r in rows:
+        title = (r['title'] or r['code'])[:32]
+        buttons.append([
+            InlineKeyboardButton(text=f'✏️ {title}', callback_data=f'admcode:edit:{r["code"]}'),
+            InlineKeyboardButton(text='🗑 Hapus', callback_data=f'admcode:delete:{r["code"]}')
+        ])
+
+    nav = []
+    if page > 0:
+        nav.append(InlineKeyboardButton(text='⬅️', callback_data=f'adm:codes:{page-1}'))
+    if len(rows) == 10:
+        nav.append(InlineKeyboardButton(text='➡️', callback_data=f'adm:codes:{page+1}'))
+    if nav:
+        buttons.append(nav)
+    buttons.append([InlineKeyboardButton(text='🔙 Panel', callback_data='adm:panel')])
+    await c.message.edit_text(
+        '\n'.join(lines),
+        parse_mode='HTML',
+        reply_markup=InlineKeyboardMarkup(inline_keyboard=buttons)
+    )
+
+
+@router.callback_query(F.data.startswith('admcode:edit:'))
+async def admin_code_edit(c, state: FSMContext):
+    if not await admin_access(c.from_user.id):
+        return await c.answer('No access', show_alert=True)
+    code = c.data.split(':', 2)[2]
+    p = await get_pool()
+    r = await p.fetchrow(
+        "SELECT code,title,tags,price_idr,media_count FROM files WHERE code=$1",
+        code,
+    )
+    if not r:
+        return await c.answer('❌ Code tidak ditemukan.', show_alert=True)
+    tags = r['tags'] or []
+    price = int(r['price_idr'] or 0)
+    price_txt = f'Rp{price:,}'.replace(',', '.') if price else 'FREE'
+    text = (
+        f"✏️ <b>EDIT CODE</b>\n\n"
+        f"🔑 Code: <code>{html.escape(code)}</code>\n"
+        f"📝 Judul: <b>{html.escape(r['title'] or '-')}</b>\n"
+        f"🏷 Tag: <b>{html.escape(' '.join(tags) or '-')}</b>\n"
+        f"💰 Harga: <b>{price_txt}</b>\n"
+        f"📦 Media: <b>{r['media_count']}</b>"
+    )
+    kb = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text='📝 Edit Judul', callback_data=f'admcode:field:title:{code}')],
+        [InlineKeyboardButton(text='🏷 Edit Tag', callback_data=f'admcode:field:tags:{code}')],
+        [InlineKeyboardButton(text='💰 Edit Harga', callback_data=f'admcode:field:price:{code}')],
+        [InlineKeyboardButton(text='🗑 Hapus Code', callback_data=f'admcode:delete:{code}')],
+        [InlineKeyboardButton(text='🔙 Code', callback_data='adm:codes')],
+    ])
+    await c.message.edit_text(text, parse_mode='HTML', reply_markup=kb)
+    await c.answer()
+
+
+@router.callback_query(F.data.startswith('admcode:field:'))
+async def admin_code_field(c, state: FSMContext):
+    if not await admin_access(c.from_user.id):
+        return await c.answer('No access', show_alert=True)
+    parts = c.data.split(':', 3)
+    if len(parts) != 4:
+        return await c.answer('Invalid request', show_alert=True)
+    field, code = parts[2], parts[3]
+    mapping = {
+        'title': (AdminState.edit_title, '📝 Kirim judul baru untuk code ini.'),
+        'tags': (AdminState.edit_tags, '🏷 Kirim tag baru, pisahkan dengan spasi.'),
+        'price': (AdminState.edit_price, f'💰 Kirim harga baru (Rp{PAID_CODE_MIN_IDR:,} - Rp{PAID_CODE_MAX_IDR:,}).'.replace(',', '.')),
+    }
+    if field not in mapping:
+        return await c.answer('Field tidak dikenal.', show_alert=True)
+    await state.set_state(mapping[field][0])
+    await state.update_data(code=code)
+    await c.message.answer(mapping[field][1])
+    await c.answer()
+
+
+@router.message(AdminState.edit_title)
+async def admin_edit_title(m, state: FSMContext):
+    d = await state.get_data()
+    code = d.get('code')
+    title = (m.text or '').strip()
+    if not code:
+        await state.clear()
+        return await m.answer('❌ Sesi edit sudah berakhir.')
+    if not title:
+        return await m.answer('❌ Judul tidak boleh kosong.')
+    await (await get_pool()).execute(
+        "UPDATE files SET title=$1 WHERE code=$2", title[:150], code
+    )
+    await state.clear()
+    await m.answer('✅ Judul code berhasil diperbarui.')
+    await m.answer(await panel_text(), parse_mode='HTML', reply_markup=kb())
+
+
+@router.message(AdminState.edit_tags)
+async def admin_edit_tags(m, state: FSMContext):
+    d = await state.get_data()
+    code = d.get('code')
+    raw = (m.text or '').strip()
+    if not code:
+        await state.clear()
+        return await m.answer('❌ Sesi edit sudah berakhir.')
+    tags = [x[:30] for x in raw.split()[:10]] if raw else []
+    await (await get_pool()).execute(
+        "UPDATE files SET tags=$1::text[] WHERE code=$2", tags, code
+    )
+    await state.clear()
+    await m.answer('✅ Tag code berhasil diperbarui.')
+
+
+@router.message(AdminState.edit_price)
+async def admin_edit_price(m, state: FSMContext):
+    d = await state.get_data()
+    code = d.get('code')
+    if not code:
+        await state.clear()
+        return await m.answer('❌ Sesi edit sudah berakhir.')
+    raw = re.sub(r'\D', '', m.text or '')
+    if not raw:
+        return await m.answer('❌ Kirim angka harga.')
+    price = int(raw)
+    if price and not (PAID_CODE_MIN_IDR <= price <= PAID_CODE_MAX_IDR):
+        return await m.answer(
+            f'❌ Harga harus Rp{PAID_CODE_MIN_IDR:,} s/d Rp{PAID_CODE_MAX_IDR:,}.'.replace(',', '.')
+        )
+    await (await get_pool()).execute(
+        "UPDATE files SET price_idr=$1,code_value_idr=$1 WHERE code=$2",
+        price, code
+    )
+    await state.clear()
+    await m.answer('✅ Harga code berhasil diperbarui.')
+
+
+@router.callback_query(F.data.startswith('admcode:delete:'))
+async def admin_code_delete_confirm(c):
+    if not await admin_access(c.from_user.id):
+        return await c.answer('No access', show_alert=True)
+    code = c.data.split(':', 2)[2]
+    p = await get_pool()
+    r = await p.fetchrow(
+        "SELECT code,title,media_count FROM files WHERE code=$1",
+        code,
+    )
+    if not r:
+        return await c.answer('❌ Code tidak ditemukan.', show_alert=True)
+    kb = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text='⚠️ Ya, Hapus Permanen', callback_data=f'admcode:deleteyes:{code}')],
+        [InlineKeyboardButton(text='❌ Batal', callback_data=f'admcode:edit:{code}')],
+    ])
+    await c.message.edit_text(
+        f"⚠️ <b>HAPUS CODE PERMANEN?</b>\n\n"
+        f"🔑 <code>{html.escape(code)}</code>\n"
+        f"📝 {html.escape(r['title'] or '-')}\n"
+        f"📦 {r['media_count']} media\n\n"
+        f"Semua object media yang tercatat di Backblaze B2 juga akan dihapus.",
+        parse_mode='HTML',
+        reply_markup=kb
+    )
+    await c.answer()
+
+
+@router.callback_query(F.data.startswith('admcode:deleteyes:'))
+async def admin_code_delete(c):
+    if not await admin_access(c.from_user.id):
+        return await c.answer('No access', show_alert=True)
+    code = c.data.split(':', 2)[2]
+    p = await get_pool()
+    r = await p.fetchrow("SELECT code,title,media FROM files WHERE code=$1", code)
+    if not r:
+        return await c.answer('❌ Code sudah tidak ada.', show_alert=True)
+
+    try:
+        media = r['media'] if isinstance(r['media'], list) else __import__('json').loads(r['media'] or '[]')
+    except Exception:
+        media = []
+
+    deleted_b2 = 0
+    failed_b2 = 0
+    for item in media:
+        try:
+            account_id = int(item.get('drive_account') or 0)
+            object_key = str(item.get('drive_file_id') or '')
+            if account_id and object_key:
+                if await b2_pool.delete(account_id, object_key):
+                    deleted_b2 += 1
+                else:
+                    failed_b2 += 1
+        except Exception:
+            failed_b2 += 1
+
+    if failed_b2:
+        # Do not remove the DB record when some storage objects could not be deleted.
+        return await c.message.edit_text(
+            f"❌ <b>Code belum dihapus.</b>\n\n"
+            f"🔑 <code>{html.escape(code)}</code>\n"
+            f"🗑 B2 terhapus: {deleted_b2}\n"
+            f"⚠️ B2 gagal: {failed_b2}\n\n"
+            f"Periksa B2 lalu coba hapus lagi agar tidak meninggalkan object yatim.",
+            parse_mode='HTML',
+            reply_markup=InlineKeyboardMarkup(inline_keyboard=[
+                [InlineKeyboardButton(text='🔄 Coba Lagi', callback_data=f'admcode:delete:{code}')],
+                [InlineKeyboardButton(text='🔙 Code', callback_data='adm:codes')]
+            ])
+        )
+
+    # Clean non-FK code metadata explicitly, then hard-delete the code.
+    await p.execute("DELETE FROM code_group_shares WHERE code=$1", code)
+    await p.execute("DELETE FROM code_cooldowns WHERE code=$1", code)
+    await p.execute("DELETE FROM files WHERE code=$1", code)
+
+    await c.message.edit_text(
+        f"✅ <b>CODE DIHAPUS PERMANEN</b>\n\n"
+        f"🔑 <code>{html.escape(code)}</code>\n"
+        f"🗑 Backblaze B2: <b>{deleted_b2}</b> object terhapus.",
+        parse_mode='HTML',
+        reply_markup=InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(text='🗂 Code', callback_data='adm:codes')],
+            [InlineKeyboardButton(text='🔙 Panel', callback_data='adm:panel')]
+        ])
+    )
+    await c.answer('Code dan media B2 berhasil dihapus.')
+
 
 @router.callback_query(F.data=='adm:broadcast')
 async def broadcast_start(c,state):
@@ -281,11 +541,6 @@ async def editcode(m,state):
  if not r:return await m.answer('❌ Code tidak ditemukan.')
  await state.set_state(AdminState.edit_title); await state.update_data(code=code)
  await m.answer(f"📝 Judul sekarang: {r['title'] or '-'}\\nKirim judul baru.")
-
-@router.message(AdminState.edit_title)
-async def edit_title(m,state):
- d=await state.get_data(); await (await get_pool()).execute("UPDATE files SET title=$1 WHERE code=$2",m.text[:150],d['code'])
- await state.clear(); await m.answer('✅ Judul code diperbarui.')
 
 @router.message(Command('deletecode'))
 async def deletecode(m):

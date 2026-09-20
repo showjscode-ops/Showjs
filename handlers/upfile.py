@@ -73,6 +73,29 @@ async def receive(m,state):
             return
         fd,path=tempfile.mkstemp(prefix='pastele_'); os.close(fd)
         try:
+            # Telegram's standard cloud Bot API limits getFile/downloads to about 20 MB.
+            # Detect this before get_file so the user gets a clear explanation instead of
+            # the generic 'Bad Request: file is too big' error. A local Bot API server
+            # can be used later if larger Telegram-origin files are required.
+            TELEGRAM_GETFILE_LIMIT = 20 * 1024 * 1024
+            if size and size > TELEGRAM_GETFILE_LIMIT:
+                msg = (
+                    '❌ <b>File terlalu besar untuk diambil oleh Bot Telegram.</b>\n\n'
+                    f'📦 Ukuran: <b>{size / 1024 / 1024:.1f} MB</b>\n'
+                    '⚠️ Batas download Bot API cloud saat ini sekitar <b>20 MB</b>.\n\n'
+                    'Kirim file di bawah batas tersebut, atau gunakan Local Bot API Server '
+                    'jika ingin mendukung file yang lebih besar.'
+                )
+                if status_id:
+                    try:
+                        await m.bot.edit_message_text(chat_id=m.chat.id, message_id=status_id, text=msg, parse_mode='HTML', reply_markup=media_kb())
+                    except Exception:
+                        await m.answer(msg, parse_mode='HTML', reply_markup=media_kb())
+                else:
+                    await m.answer(msg, parse_mode='HTML', reply_markup=media_kb())
+                try: await m.delete()
+                except: pass
+                return
             if status_id:
                 try: await m.bot.edit_message_text(chat_id=m.chat.id,message_id=status_id,text=f'⏳ <b>Loading…</b>\n\n📤 Menyimpan media <b>{len(media)+1}/{MAX_MEDIA}</b>',parse_mode='HTML',reply_markup=media_kb())
                 except: pass
@@ -152,7 +175,7 @@ async def price(m,state):
     await state.clear()
     tagtext=' '.join('#'+html.escape(t) for t in tags) or '-'
     paytxt=f'💰 Rp{price:,}'.replace(',','.') if price else '🆓 FREE'
-    await c.message.edit_text(
+    await m.answer(
         f'✅ <b>CODE BERHASIL DIBUAT</b>\n\n📝 Judul: <b>{html.escape(title)}</b>\n🏷 Tag: {tagtext}\n💰 Harga: <b>{paytxt}</b>\n🔑 <code>{code}</code>\n📦 {len(media)} media',
         parse_mode='HTML')
     from config import CODE_GROUP_ID
