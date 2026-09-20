@@ -46,9 +46,11 @@ async def enabled(provider):
     return str(value or "off").strip().lower() in {"on", "1", "true", "yes", "enabled"}
 
 async def create_purchase(uid,typ,qty,amount,provider,name,metadata=None):
-    if provider == "bayargg" and int(amount) > 500000:
-        return None, "BayarGG QRIS maksimum Rp500.000 per transaksi. Gunakan nominal lebih kecil atau provider lain."
+    provider=str(provider).lower().strip()
+    amount=int(amount)
     if not await enabled(provider): return None,"disabled"
+    if provider=="bayargg" and not (5000 <= amount <= 500000):
+        return None,"invalid_amount"
     order=f"{provider.upper()}-{uuid.uuid4().hex}"
     desc=f"{typ}:{qty}"
     if metadata and metadata.get("code"): desc=f"file:{metadata['code']}"

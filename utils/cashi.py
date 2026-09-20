@@ -36,7 +36,19 @@ class Cashi:
                 if r.status_code >= 400: return None
             d=raw.get("data") if isinstance(raw.get("data"),dict) else {}
             merged={**d,**raw}
-            return {"invoice_id":str(merged.get("order_id") or merged.get("orderId") or merged.get("invoice_id") or order_id),"status":str(merged.get("status") or merged.get("payment_status") or "").lower(),"amount":int(merged.get("amount") or 0)}
+            if isinstance(merged.get("result"),dict):
+                merged={**merged,**merged["result"]}
+            status=str(
+                merged.get("status")
+                or merged.get("payment_status")
+                or merged.get("paymentStatus")
+                or merged.get("transaction_status")
+                or ""
+            ).lower().strip()
+            amount=merged.get("amount") or merged.get("paid_amount") or merged.get("final_amount") or 0
+            try: amount=int(amount)
+            except Exception: amount=0
+            return {"invoice_id":str(merged.get("order_id") or merged.get("orderId") or merged.get("invoice_id") or order_id),"status":status,"amount":amount}
         except Exception:
             log.exception("Cashi check payment failed")
             return None
