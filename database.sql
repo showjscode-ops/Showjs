@@ -134,3 +134,12 @@ CREATE INDEX IF NOT EXISTS idx_manual_deposits_status ON manual_deposits(status,
 CREATE INDEX IF NOT EXISTS idx_users_creator ON users(is_creator,creator_status);
 CREATE INDEX IF NOT EXISTS idx_users_last_seen ON users(last_seen DESC);
 COMMIT;
+
+
+-- PAYMENT SETTINGS: one canonical key per payment method.
+INSERT INTO settings(key,value) VALUES
+ ('payment_bayargg_enabled','on'),
+ ('payment_cashi_enabled','on'),
+ ('payment_manual_enabled','on'),
+ ('payment_balance_enabled','on')
+ON CONFLICT(key) DO NOTHING;
