@@ -91,6 +91,10 @@ async def receive(m,state):
             try:
                 await (await get_pool()).execute("INSERT INTO error_logs(source,message,user_id) VALUES($1,$2,$3)",'upfile',str(exc)[:1000],uid)
             except: pass
+            try:
+                from utils.notify_channel import notify
+                await notify(m.bot, f'🚨 <b>BOT ERROR — UP FILE</b>\n\n🆔 User: <code>{uid}</code>\n❌ <code>{str(exc)[:900]}</code>')
+            except: pass
             if status_id:
                 try: await m.bot.edit_message_text(chat_id=m.chat.id,message_id=status_id,text=f'❌ <b>Gagal menyimpan media.</b>\n\n📦 Tersimpan: <b>{len(media)}/{MAX_MEDIA}</b>',parse_mode='HTML',reply_markup=media_kb())
                 except: pass

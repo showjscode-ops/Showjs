@@ -13,7 +13,7 @@ async def dashboard_text(uid):
  creator=bool(r and r['is_creator'] and r['creator_status']=='approved')
  vip=bool(r and r['vip'] and (r['vip_until'] is None or r['vip_until']>__import__('datetime').datetime.now(__import__('datetime').timezone.utc)))
  status='CREATOR' if creator else ('VIP' if vip else 'FREE')
- return f"👤 <b>Dashboard</b>\n\n🆔 ID: <code>{uid}</code>\n🟢 Status: <b>{status}</b>\n💰 Saldo: <b>Rp{int(r['balance'] or 0):,}</b>\n🪙 Poin: <b>{float(r['points'] or 0):g}</b>\n⭐ Star: <b>{float(r['stars'] or 0):g}</b>".replace(',','.'),creator
+ return f"👤 <b>Dashboard</b>\n\n🆔 ID: <code>{uid}</code>\n🟢 Status: <b>{status}</b>\n💰 Saldo: <b>Rp{int(r['balance'] or 0):,}</b>\n🪙 Poin: <b>{float(r['points'] or 0):g}</b>\n⭐ Star: <b>{float(r['stars'] or 0):g}</b>\n\n💡 Belum paham cara menggunakan bot? Klik <b>Help</b> untuk melihat panduan lengkap.".replace(',','.'),creator
 
 @router.message(CommandStart())
 async def start(m):
@@ -69,4 +69,4 @@ async def points_help_ok(c):
  await c.answer()
 
 async def send_points_help(message):
- return await message.answer(POINTS_HELP_TEXT,reply_markup=InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text="✅ OKE",callback_data="points_help_ok")]]))
+ return await message.answer(POINTS_HELP_TEXT,reply_markup=InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text="❓ Help",callback_data="help")]]))

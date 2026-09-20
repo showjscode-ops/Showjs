@@ -89,10 +89,22 @@ async def send_page(bot,chat_id,code,media,page):
     paths=[]; group=[]
     try:
         for i,item in enumerate(chunk,start+1):
-            path,_=await _download_item(bot,item); paths.append(path)
+            try:
+                path,_=await _download_item(bot,item); paths.append(path)
+            except Exception as exc:
+                try:
+                    await notify(bot, f'🚨 <b>MEDIA ERROR</b>\n\n🔑 Code: <code>{html.escape(str(code))}</code>\n📄 Media: <b>{i}</b>\n❌ <code>{html.escape(str(exc)[:900])}</code>')
+                except Exception: pass
+                continue
             cap=f"🔑 {code}\n📄 Media {i}/{len(media)}\n📑 Page {page+1}"
             typ=item.get('type')
-            inp=BufferedInputFile(open(path,'rb').read(),filename=item.get('file_name') or f'media-{i}')
+            try:
+                inp=BufferedInputFile(open(path,'rb').read(),filename=item.get('file_name') or f'media-{i}')
+            except Exception as exc:
+                try:
+                    await notify(bot, f'🚨 <b>MEDIA READ ERROR</b>\n\n🔑 Code: <code>{html.escape(str(code))}</code>\n📄 Media: <b>{i}</b>\n❌ <code>{html.escape(str(exc)[:900])}</code>')
+                except Exception: pass
+                continue
             if typ=='photo': group.append(InputMediaPhoto(media=inp,caption=cap))
             elif typ=='video': group.append(InputMediaVideo(media=inp,caption=cap,supports_streaming=True))
             elif typ=='document': group.append(InputMediaDocument(media=inp,caption=cap))
@@ -107,7 +119,9 @@ async def send_page(bot,chat_id,code,media,page):
         else:
             for item in chunk:
                 try: await deliver_one(bot,chat_id,item,caption=f"🔑 {code}\n📄 Media\n📑 Page {page+1}")
-                except Exception: pass
+                except Exception as exc:
+                    try: await notify(bot, f'🚨 <b>MEDIA SEND ERROR</b>\n\n🔑 Code: <code>{html.escape(str(code))}</code>\n❌ <code>{html.escape(str(exc)[:900])}</code>')
+                    except Exception: pass
         delay=MEDIA_SEND_DELAY_MS
         try: delay=int(await (await get_pool()).fetchval("SELECT value FROM settings WHERE key='media_send_delay_ms'") or delay)
         except: pass
@@ -181,17 +195,18 @@ async def payfile(c,state):
     if provider=='manual':
         qr=await (await get_pool()).fetchval("SELECT value FROM settings WHERE key='manual_qr_file_id'")
         if not qr:return await c.answer('❌ QR manual belum dipasang admin.',show_alert=True)
-        await c.message.answer_photo(qr,caption=f"🧾 <b>QR MANUAL</b>\n\n💰 {fmt(f['price_idr'])}\n\nAfter payment, send your payment proof.",parse_mode='HTML')
-        # Store the target code so admin approval opens this paid code directly.
-        from aiogram.fsm.context import FSMContext
-        # The callback handler can access FSM storage through dispatcher only in handler data;
-        # use a short-lived per-user table row instead.
         p=await get_pool()
-        await p.execute("INSERT INTO manual_deposits(user_id,amount,target_code,status) VALUES($1,$2,$3,'pending')",c.from_user.id,int(f['price_idr']),code)
-        did=await p.fetchval("SELECT currval(pg_get_serial_sequence('manual_deposits','id'))")
-        await state.set_state(ManualProofState.proof)
-        await state.update_data(kind='file',amount=int(f['price_idr']),target_code=code)
-        await c.message.answer(f"🧾 Payment ID: <code>{did}</code>\nSend screenshot of your payment proof.",parse_mode='HTML')
+        row=await p.fetchrow("""INSERT INTO manual_deposits(user_id,amount,target_code,target_type,quantity,status)
+          VALUES($1,$2,$3,'file',1,'pending') RETURNING id""",c.from_user.id,int(f['price_idr']),code)
+        msg=await c.message.answer_photo(
+          qr,caption=f"🧾 <b>QR MANUAL</b>\n\n🔑 Code: <code>{html.escape(code)}</code>\n💰 {fmt(f['price_idr'])}\n\nSetelah membayar, tekan <b>Cek Pembayaran</b> lalu kirim screenshot.",
+          parse_mode='HTML',
+          reply_markup=InlineKeyboardMarkup(inline_keyboard=[
+             [InlineKeyboardButton(text='🔄 Cek Pembayaran',callback_data=f'mancheck:{row["id"]}')],
+             [InlineKeyboardButton(text='❌ Batal',callback_data=f'mancancel:{row["id"]}')]
+          ])
+        )
+        await p.execute("UPDATE manual_deposits SET qr_message_id=$1 WHERE id=$2",msg.message_id,row["id"])
         return
     r,status=await create_purchase(c.from_user.id,'file',1,int(f['price_idr']),provider,c.from_user.full_name,{"code":code})
     if not r:return await c.answer('❌ Provider sedang ditutup.',show_alert=True)

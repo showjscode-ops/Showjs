@@ -34,6 +34,7 @@ async def creator_apply(c):
     kb=[]
     if admin_url:
         kb.append([InlineKeyboardButton(text="👑 Join Kreator",url=admin_url)])
+    kb.append([InlineKeyboardButton(text="💳 Bayar Pendaftaran Rp200.000",callback_data="creator_buy")])
     kb.append([InlineKeyboardButton(text="🔙 Kembali",callback_data="menu_lainnya")])
     await c.message.edit_text(text,parse_mode="HTML",reply_markup=InlineKeyboardMarkup(inline_keyboard=kb))
 
@@ -68,87 +69,119 @@ async def my(c):
     await loading(c)
     await c.message.edit_text(text,parse_mode='HTML',reply_markup=InlineKeyboardMarkup(inline_keyboard=kb))
 
-async def _all_codes_page(page:int=0, per_page:int=10):
+
+async def _paged_codes(page:int=0, mode:str="all", per_page:int=10):
     p=await get_pool()
-    offset=max(0,page)*per_page
-    rows=await p.fetch(
-        "SELECT code,title,media_count,views,likes,hates,favorites,price_idr "
-        "FROM files WHERE active=TRUE ORDER BY id DESC LIMIT $1 OFFSET $2",
-        per_page, offset
+    page=max(0,int(page)); offset=page*per_page
+    if mode=="top":
+        order="views DESC, likes DESC, favorites DESC, id DESC"
+    elif mode=="recommend":
+        order="(likes*3 + favorites*2 + views) DESC, views DESC, id DESC"
+    else:
+        order="id DESC"
+    rows=await p.fetch(f"""
+        SELECT id,code,title,media_count,views,likes,hates,favorites,price_idr
+        FROM files WHERE active=TRUE ORDER BY {order} LIMIT $1 OFFSET $2
+    """,per_page,offset)
+    total=int(await p.fetchval("SELECT COUNT(*) FROM files WHERE active=TRUE") or 0)
+    return rows,total
+
+def _code_link(code):
+    return f"https://t.me/Jsshowbot?start={code}"
+
+def _code_text_row(r, prefix=""):
+    title=html.escape((r['title'] or 'Untitled')[:60])
+    href=html.escape(_code_link(r['code']),quote=True)
+    price=int(r['price_idr'] or 0)
+    paid=f" • 💰 Rp{price:,}".replace(',','.') if price else " • 🆓"
+    return (
+        f"{prefix}<a href=\"{href}\">📝 {title}</a>{paid}\n"
+        f"👁 {r['views']} • 👍 {r['likes']} • 👎 {r['hates']} • ⭐ {r['favorites']}\n\n"
     )
-    total=await p.fetchval("SELECT COUNT(*) FROM files WHERE active=TRUE")
-    return rows,int(total or 0)
 
-def _code_list_kb(rows,page,total,per_page=10):
-    kb=[]
-    for r in rows:
-        title=(r['title'] or 'Untitled')[:45]
-        kb.append([InlineKeyboardButton(text=f"📝 {title}",url=_code_link(r['code']))])
+def _code_nav(page,total,mode):
+    pages=max(1,(total+9)//10)
     nav=[]
-    pages=max(1,(total+per_page-1)//per_page)
-    if page>0: nav.append(InlineKeyboardButton(text='⬅️',callback_data=f'codepage:{page-1}'))
+    if page>0: nav.append(InlineKeyboardButton(text='⬅️',callback_data=f'{mode}page:{page-1}'))
     nav.append(InlineKeyboardButton(text=f'📄 {page+1}/{pages}',callback_data='noop'))
-    if page<pages-1: nav.append(InlineKeyboardButton(text='➡️',callback_data=f'codepage:{page+1}'))
-    if nav: kb.append(nav)
-    kb.append([InlineKeyboardButton(text='🔙 Kembali',callback_data='home')])
-    return InlineKeyboardMarkup(inline_keyboard=kb)
+    if page<pages-1: nav.append(InlineKeyboardButton(text='➡️',callback_data=f'{mode}page:{page+1}'))
+    rows=[nav]
+    if mode=="all":
+        rows.append([
+            InlineKeyboardButton(text='🔝 Top 10',callback_data='top_codes'),
+            InlineKeyboardButton(text='⭐ Recommendation',callback_data='recommendation')
+        ])
+    elif mode=="top":
+        rows.append([InlineKeyboardButton(text='⭐ Recommendation',callback_data='recommendation'),
+                     InlineKeyboardButton(text='🔑 All Code',callback_data='code_all')])
+    else:
+        rows.append([InlineKeyboardButton(text='🔝 Top 10',callback_data='top_codes'),
+                     InlineKeyboardButton(text='🔑 All Code',callback_data='code_all')])
+    rows.append([InlineKeyboardButton(text='🔙 Kembali',callback_data='home')])
+    return InlineKeyboardMarkup(inline_keyboard=rows)
 
-async def _render_all_codes(c,page=0,edit=False):
-    rows,total=await _all_codes_page(page)
-    text='🔑 <b>ALL CODE</b>\n\n'
+async def _render_code_list(c,page=0,mode="all"):
+    rows,total=await _paged_codes(page,mode,10)
+    heading={"all":"🔑 <b>ALL CODE</b>","top":"🔝 <b>TOP 10 CODE</b>","recommend":"⭐ <b>RECOMMENDATION</b>"}[mode]
+    text=heading+"\n\n"
     if not rows:
-        text+='Belum ada code yang dibuat.'
+        text+="Belum ada code yang dibuat."
     else:
-        for r in rows:
-            title=html.escape((r['title'] or 'Untitled')[:50])
-            price=int(r['price_idr'] or 0)
-            paid=f" • 💰 Rp{price:,}".replace(',','.') if price else " • 🆓"
-            text += f"📝 <b>{title}</b>{paid}\n"
-            text += f"👁 {r['views']} • 👍 {r['likes']} • 👎 {r['hates']} • ⭐ {r['favorites']}\n\n"
-        text += "Klik <b>Judul</b> untuk mencari/membuka media yang terhubung dengan CODE tersebut."
-    kb=_code_list_kb(rows,page,total)
-    if edit:
-        await c.message.edit_text(text,parse_mode='HTML',reply_markup=kb)
-    else:
-        await c.message.answer(text,parse_mode='HTML',reply_markup=kb)
+        for i,r in enumerate(rows, page*10+1):
+            text+=_code_text_row(r, f"{i}. " if mode!="all" else "")
+        text+="Klik <b>Judul</b> untuk mencari/membuka media yang terhubung dengan CODE tersebut."
+    await c.message.edit_text(text,parse_mode='HTML',reply_markup=_code_nav(page,total,mode))
 
 @router.callback_query(F.data=='code_all')
 async def code_all(c):
-    await loading(c)
-    await _render_all_codes(c,0,edit=True)
+    await loading(c); await _render_code_list(c,0,"all")
 
 @router.callback_query(F.data.startswith('codepage:'))
 async def codepage(c):
     await loading(c)
     try: page=int(c.data.split(':',1)[1])
     except: page=0
-    await _render_all_codes(c,page,edit=True)
+    await _render_code_list(c,page,"all")
+
+@router.callback_query(F.data=='top_codes')
+async def top_codes(c):
+    await loading(c); await _render_code_list(c,0,"top")
+
+@router.callback_query(F.data.startswith('toppage:'))
+async def toppage(c):
+    await loading(c)
+    try: page=int(c.data.split(':',1)[1])
+    except: page=0
+    await _render_code_list(c,page,"top")
+
+@router.callback_query(F.data=='recommendation')
+async def recommendation(c):
+    await loading(c); await _render_code_list(c,0,"recommend")
+
+@router.callback_query(F.data.startswith('recommendpage:'))
+async def recommendpage(c):
+    await loading(c)
+    try: page=int(c.data.split(':',1)[1])
+    except: page=0
+    await _render_code_list(c,page,"recommend")
 
 @router.callback_query(F.data.startswith('browsecode:'))
 async def browsecode(c):
     await loading(c)
     code=c.data.split(':',1)[1]
     p=await get_pool()
-    f=await p.fetchrow(
-        "SELECT code,title,media_count,views,likes,hates,favorites,price_idr "
-        "FROM files WHERE lower(code)=lower($1) AND active=TRUE", code
-    )
-    if not f:
-        return await c.answer('❌ Code tidak ditemukan.',show_alert=True)
+    f=await p.fetchrow("SELECT code,title,media_count,views,likes,hates,favorites,price_idr FROM files WHERE lower(code)=lower($1) AND active=TRUE", code)
+    if not f: return await c.answer('❌ Code tidak ditemukan.',show_alert=True)
     price=int(f['price_idr'] or 0)
     paid=f"💰 Harga: <b>Rp{price:,}</b>".replace(',','.') if price else "🆓 <b>FREE CODE</b>"
+    href=html.escape(_code_link(f['code']),quote=True)
     await c.message.edit_text(
-        f"📝 <a href=\"{_safe_url(_code_link(f['code']))}\"><b>{html.escape(f['title'] or 'Untitled')}</b></a>\n\n"
-        f"🔑 <code>{html.escape(f['code'])}</code>\n"
-        f"📦 Media: <b>{f['media_count']}</b>\n{paid}\n\n"
-        f"👁 Total View: <b>{f['views']}</b>\n"
-        f"👍 Total Like: <b>{f['likes']}</b>\n"
-        f"👎 Total Hate: <b>{f['hates']}</b>\n"
-        f"⭐ Total Favorit: <b>{f['favorites']}</b>\n\n"
-        "Klik <b>Buka Code</b> untuk mencari dan membuka media yang terhubung.",
+        f"📝 <a href=\"{href}\"><b>{html.escape(f['title'] or 'Untitled')}</b></a>\n\n"
+        f"🔑 <code>{html.escape(f['code'])}</code>\n📦 Media: <b>{f['media_count']}</b>\n{paid}\n\n"
+        f"👁 Total View: <b>{f['views']}</b>\n👍 Total Like: <b>{f['likes']}</b>\n👎 Total Hate: <b>{f['hates']}</b>\n⭐ Total Favorit: <b>{f['favorites']}</b>\n\n"
+        "Klik <b>Judul</b> untuk mencari/membuka media yang terhubung dengan CODE tersebut.",
         parse_mode='HTML',
         reply_markup=InlineKeyboardMarkup(inline_keyboard=[
-            [InlineKeyboardButton(text='📥 Buka Code',callback_data=f'getcode:{f["code"]}')],
             [InlineKeyboardButton(text='👍 Like',callback_data=f'react:like:{f["code"]}'),
              InlineKeyboardButton(text='👎 Hate',callback_data=f'react:hate:{f["code"]}'),
              InlineKeyboardButton(text='⭐ Favorit',callback_data=f'react:favorite:{f["code"]}')],
@@ -156,34 +189,129 @@ async def browsecode(c):
         ])
     )
 
-@router.callback_query(F.data=='group_code')
-async def group(c):
-    rows=await (await get_pool()).fetch("SELECT code,group_id FROM code_group_shares WHERE shared_by=$1 ORDER BY last_seen_at DESC LIMIT 30",c.from_user.id)
-    text='👥 <b>GROUP CODE</b>\n\n'+(
-        '\n'.join(f'🔑 <code>{r["code"]}</code> • {r["group_id"]}' for r in rows)
-        if rows else 'Belum ada CODE yang terdeteksi di group.'
-    )
-    await loading(c); await c.message.edit_text(text,parse_mode='HTML',reply_markup=InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text='🔙 Kembali',callback_data='menu_lainnya')]]))
+HELP_TEXTS={
+"id":"""❓ <b>PANDUAN LENGKAP</b>
 
+📤 <b>Up File</b>
+Kirim media melalui menu Up File. Bot menyimpan media ke storage dan membuat CODE. Setelah itu kamu dapat mengisi judul, tag, dan harga.
 
-@router.callback_query(F.data=='top_codes')
-async def top_codes(c):
-    rows=await (await get_pool()).fetch("""SELECT code,title,views,likes,hates,favorites,price_idr
-      FROM files WHERE active=TRUE ORDER BY views DESC,likes DESC LIMIT 10""")
-    text='🏆 <b>TOP 10 CODE</b>\n\n'
-    if not rows:text+='Belum ada code.'
-    else:
-        for i,r in enumerate(rows,1):
-            text+=f"{i}. <b>{html.escape(r['title'] or 'Untitled')}</b>\n🔑 <code>{r['code']}</code>\n👁 {r['views']} • 👍 {r['likes']} • 👎 {r['hates']} • ⭐ {r['favorites']}\n\n"
-    await loading(c); await c.message.edit_text(text,parse_mode='HTML',reply_markup=InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text='🔙 Kembali',callback_data='home')]]))
+📥 <b>Get File</b>
+Masukkan CODE atau buka judul CODE. Untuk FREE CODE kamu dapat membuka media dengan Poin atau Star. Paid Code dapat dibayar melalui Saldo/QR sesuai metode yang aktif.
+
+🪙 <b>Poin</b>
+Poin digunakan untuk membuka FREE CODE. Akses Poin berlaku 24 jam. Creator mendapat potongan biaya Poin sesuai aturan bot.
+
+⭐ <b>Star</b>
+Star digunakan untuk membuka FREE CODE dan akses berlaku 48 jam.
+
+💎 <b>VIP</b>
+VIP dapat membuka media tanpa membayar per CODE. Code yang sama memiliki jeda pembukaan sesuai aturan VIP.
+
+💳 <b>Pembayaran</b>
+BayarGG/Cashi menampilkan QR. Setelah membayar tekan Cek Pembayaran. Jika batal, QR dihapus. Pembayaran manual membutuhkan screenshot bukti dan persetujuan admin.
+
+🎁 <b>Check In</b>
+Check-in setiap hari untuk mendapatkan Poin. Hari 1–6 mendapat 0.1 Poin dan hari ke-7 mendapat 1 Poin.
+
+👑 <b>Creator</b>
+Creator dapat membuat CODE berbayar. Pendaftaran dan verifikasi mengikuti aturan yang tampil di menu Creator.
+
+🔑 <b>All Code / Top 10 / Recommendation</b>
+Judul CODE dapat langsung diklik untuk membuka bot @Jsshowbot dengan CODE tersebut. Gunakan tombol halaman untuk melihat daftar berikutnya.
+
+🆘 <b>Masih bingung?</b>
+Kembali ke Dashboard lalu buka Help kapan saja.""",
+"en":"""❓ <b>FULL GUIDE</b>
+
+📤 <b>Up File</b>
+Send your media from Up File. The bot stores the media and creates a CODE. You can then set the title, tags, and price.
+
+📥 <b>Get File</b>
+Enter a CODE or click a CODE title. For FREE CODE, media can be unlocked with Points or Stars. Paid Code can be purchased using Balance or an enabled QR payment method.
+
+🪙 <b>Points</b>
+Points are used to unlock FREE CODE media. Point access lasts 24 hours. Creators receive the configured Point benefit.
+
+⭐ <b>Stars</b>
+Stars can unlock FREE CODE media. Star access lasts 48 hours.
+
+💎 <b>VIP</b>
+VIP users can open media without paying for each CODE. The same CODE has a VIP cooldown according to the bot rules.
+
+💳 <b>Payments</b>
+BayarGG/Cashi shows a QR. After paying, press Check Payment. If you cancel, the QR message is removed. Manual payment requires a screenshot and admin approval.
+
+🎁 <b>Check In</b>
+Check in daily to receive Points. Days 1–6 give 0.1 Point and day 7 gives 1 Point.
+
+👑 <b>Creator</b>
+Creators can make paid CODEs. Registration and verification follow the rules shown in the Creator menu.
+
+🔑 <b>All Code / Top 10 / Recommendation</b>
+CODE titles are directly clickable and open @Jsshowbot with the CODE. Use the page buttons to browse more.
+
+🆘 <b>Still confused?</b>
+Return to Dashboard and open Help anytime.""",
+"zh":"""❓ <b>完整使用说明</b>
+
+📤 <b>上传文件 Up File</b>
+进入 Up File 发送媒体。机器人会保存媒体并生成 CODE。之后可以设置标题、标签和价格。
+
+📥 <b>获取文件 Get File</b>
+输入 CODE 或点击 CODE 标题。FREE CODE 可以使用 Poin 或 Star 解锁，付费 CODE 可以使用余额或已开启的二维码支付方式购买。
+
+🪙 <b>Poin</b>
+Poin 用于解锁 FREE CODE，使用有效期为 24 小时。
+
+⭐ <b>Star</b>
+Star 用于解锁 FREE CODE，使用有效期为 48 小时。
+
+💎 <b>VIP</b>
+VIP 可以按照机器人规则打开媒体，同一个 CODE 有冷却时间。
+
+💳 <b>付款</b>
+BayarGG/Cashi 会显示二维码。付款后点击“检查付款”。取消付款后二维码消息会被删除。人工付款需要发送付款截图并等待管理员审核。
+
+🎁 <b>每日签到</b>
+每天签到获得 Poin。第 1–6 天每天 0.1 Poin，第 7 天获得 1 Poin。
+
+👑 <b>Creator 创作者</b>
+Creator 可以创建付费 CODE。注册和审核按照 Creator 页面显示的规则进行。
+
+🔑 <b>All Code / Top 10 / Recommendation</b>
+CODE 标题可以直接点击，会打开 @Jsshowbot 并携带对应 CODE。使用分页按钮浏览更多内容。
+
+🆘 <b>仍然不明白？</b>
+返回 Dashboard，随时打开 Help 查看说明。"""
+}
 
 @router.callback_query(F.data=='help')
 async def help_(c):
     await loading(c)
     await c.message.edit_text(
-        '❓ <b>HELP</b>\n\n📤 Up File → media otomatis ke Backblaze B2.\n📥 Get File → unlock dengan Poin atau Star.\n🪙 Poin → akses 24 jam.\n⭐ Star → akses 48 jam.\n👑 Creator → potongan Poin 50% dan +1 Poin setiap unlock berhasil.\n🎁 Check In → hari 1-6 = 0.1 Poin, hari 7 = 1 Poin.',
-        parse_mode='HTML',
-        reply_markup=InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text='🔙 Kembali',callback_data='menu_lainnya')]])
+        HELP_TEXTS["id"],parse_mode='HTML',
+        reply_markup=InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(text='🇮🇩 Indonesia',callback_data='help:lang:id'),
+             InlineKeyboardButton(text='🇬🇧 English',callback_data='help:lang:en'),
+             InlineKeyboardButton(text='🇨🇳 中文',callback_data='help:lang:zh')],
+            [InlineKeyboardButton(text='🌐 Select Language / 选择语言',callback_data='help:lang:id')],
+            [InlineKeyboardButton(text='🔙 Kembali',callback_data='home')]
+        ])
+    )
+
+@router.callback_query(F.data.startswith('help:lang:'))
+async def help_lang(c):
+    lang=c.data.rsplit(':',1)[1]
+    if lang not in HELP_TEXTS: lang="id"
+    await loading(c)
+    await c.message.edit_text(
+        HELP_TEXTS[lang],parse_mode='HTML',
+        reply_markup=InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(text='🇮🇩 Indonesia',callback_data='help:lang:id'),
+             InlineKeyboardButton(text='🇬🇧 English',callback_data='help:lang:en'),
+             InlineKeyboardButton(text='🇨🇳 中文',callback_data='help:lang:zh')],
+            [InlineKeyboardButton(text='🔙 Kembali',callback_data='home')]
+        ])
     )
 
 @router.callback_query(F.data=='buy_vip')

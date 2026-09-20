@@ -199,9 +199,37 @@ async def manual(c):
  if not await admin_access(c.from_user.id): return
  rows=await (await get_pool()).fetch("SELECT id,user_id,amount,status FROM manual_deposits WHERE status='pending' ORDER BY id DESC LIMIT 20")
  text='🧾 <b>MANUAL PAYMENTS</b>\\n\\n'+('\\n'.join(f"#{r['id']} • {r['user_id']} • {r['amount']} • {r['status']}" for r in rows) if rows else 'Tidak ada pending.')
- buttons=[[InlineKeyboardButton(text=f'✅ #{r["id"]} Approve',callback_data=f'manapprove:{r["id"]}'),InlineKeyboardButton(text='❌ Reject',callback_data=f'manreject:{r["id"]}')] for r in rows]
+ buttons=[]
+ for r in rows:
+  buttons.append([
+   InlineKeyboardButton(text=f'📎 Proof #{r["id"]}',callback_data=f'manproof:{r["id"]}'),
+   InlineKeyboardButton(text='✅ Approve',callback_data=f'manapprove:{r["id"]}'),
+   InlineKeyboardButton(text='❌ Reject',callback_data=f'manreject:{r["id"]}')
+  ])
  buttons.append([InlineKeyboardButton(text='🔙 Panel',callback_data='adm:panel')])
  await c.message.edit_text(text,parse_mode='HTML',reply_markup=InlineKeyboardMarkup(inline_keyboard=buttons))
+
+
+@router.callback_query(F.data.startswith('manproof:'))
+async def manproof(c):
+ if not await admin_access(c.from_user.id): return await c.answer('No access',show_alert=True)
+ did=int(c.data.split(':',1)[1]); p=await get_pool()
+ r=await p.fetchrow("SELECT * FROM manual_deposits WHERE id=$1",did)
+ if not r or not r['proof_file_id']:
+  return await c.answer('❌ Bukti belum dikirim.',show_alert=True)
+ cap=(f'🧾 <b>MANUAL PAYMENT PROOF</b>\n\n'
+      f'ID: <code>{did}</code>\nUser: <code>{r["user_id"]}</code>\n'
+      f'Amount: <b>Rp{int(r["amount"]):,}</b>\nStatus: <b>{html.escape(str(r["status"]))}</b>').replace(',','.')
+ kb=InlineKeyboardMarkup(inline_keyboard=[[
+   InlineKeyboardButton(text='✅ Approve',callback_data=f'manapprove:{did}'),
+   InlineKeyboardButton(text='❌ Reject',callback_data=f'manreject:{did}')
+ ]])
+ try:
+  if r['proof_type']=='photo': await c.message.answer_photo(r['proof_file_id'],caption=cap,parse_mode='HTML',reply_markup=kb)
+  else: await c.message.answer_document(r['proof_file_id'],caption=cap,parse_mode='HTML',reply_markup=kb)
+  await c.answer()
+ except Exception:
+  await c.answer('❌ Gagal menampilkan bukti.',show_alert=True)
 
 @router.callback_query(F.data.startswith('adm:users'))
 async def users(c):
