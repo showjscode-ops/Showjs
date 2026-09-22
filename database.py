@@ -46,6 +46,10 @@ async def init_db():
     ALTER TABLE files ADD COLUMN IF NOT EXISTS hates BIGINT NOT NULL DEFAULT 0;
     ALTER TABLE files ADD COLUMN IF NOT EXISTS favorites BIGINT NOT NULL DEFAULT 0;
     ALTER TABLE purchases ADD COLUMN IF NOT EXISTS metadata JSONB NOT NULL DEFAULT '{}'::jsonb;
+    ALTER TABLE purchases ADD COLUMN IF NOT EXISTS expires_at TIMESTAMPTZ;
+    ALTER TABLE users ADD COLUMN IF NOT EXISTS creator_previous BOOLEAN NOT NULL DEFAULT FALSE;
+    ALTER TABLE manual_deposits ADD COLUMN IF NOT EXISTS qr_message_id BIGINT;
+    ALTER TABLE manual_deposits ADD COLUMN IF NOT EXISTS proof_message_id BIGINT;
 
     CREATE TABLE IF NOT EXISTS point_transfers(
       id BIGSERIAL PRIMARY KEY,
@@ -138,7 +142,10 @@ async def init_db():
 
     -- Existing deployments may have the old unlock payment constraint.
     ALTER TABLE IF EXISTS unlock_transactions DROP CONSTRAINT IF EXISTS unlock_transactions_payment_type_check;
-    ALTER TABLE IF EXISTS unlock_transactions ADD CONSTRAINT unlock_transactions_payment_type_check CHECK(payment_type IN ('points','star','balance'));
+    ALTER TABLE IF EXISTS unlock_transactions ADD CONSTRAINT unlock_transactions_payment_type_check CHECK(payment_type IN ('points','star','balance','qr','creator_points','admin'));
+
+    ALTER TABLE manual_deposits ADD COLUMN IF NOT EXISTS qr_message_id BIGINT;
+    ALTER TABLE manual_deposits ADD COLUMN IF NOT EXISTS proof_message_id BIGINT;
 
     CREATE INDEX IF NOT EXISTS idx_manual_deposits_status ON manual_deposits(status,created_at);
     CREATE INDEX IF NOT EXISTS idx_error_logs_created ON error_logs(created_at DESC);

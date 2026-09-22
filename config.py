@@ -56,6 +56,7 @@ BAYARGG_WEBHOOK_SECRET=os.getenv("BAYARGG_WEBHOOK_SECRET","").strip()
 BAYARGG_BASE_URL=os.getenv("BAYARGG_BASE_URL","https://www.bayar.gg/api").strip().rstrip("/")
 BAYARGG_WEBHOOK_URL=f"{PUBLIC_BASE_URL}/bayargg/webhook" if PUBLIC_BASE_URL else ""
 CASHI_API_KEY=os.getenv("CASHI_API_KEY","").strip()
+CASHI_SECRET_KEY=os.getenv("CASHI_SECRET_KEY","").strip()
 CASHI_BASE_URL=os.getenv("CASHI_BASE_URL","https://cashi.id").strip().rstrip("/")
 CASHI_PAYMENT_CHANNEL=os.getenv("CASHI_PAYMENT_CHANNEL","QRIS_CUSTOM").strip()
 CASHI_MIN_AMOUNT=env_int("CASHI_MIN_AMOUNT",2000)
