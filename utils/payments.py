@@ -112,7 +112,7 @@ async def create_purchase(uid,typ,qty,amount,provider,name,metadata=None):
         "qr_string":r.get("qr_string") or r.get("qr_image"),
         "payment_url":r.get("payment_url"),
         "final_amount":r.get("final_amount") or r.get("amount") or amount,
-        "expires_at":_parse_dt(r.get("expires_at")),
+        "expires_at":(_parse_dt(r.get("expires_at")).isoformat() if _parse_dt(r.get("expires_at")) else None),
     })
     await p.execute("""
         INSERT INTO purchases(
@@ -120,7 +120,7 @@ async def create_purchase(uid,typ,qty,amount,provider,name,metadata=None):
         )
         VALUES($1,$2,$3,$4,$5,$6,$7,$8::jsonb,$9)
         ON CONFLICT(invoice_id) DO NOTHING
-    """,uid,typ,qty,amount,provider,order,r["invoice_id"],json.dumps(metadata),_parse_dt(r.get("expires_at")))
+    """,uid,typ,qty,amount,provider,order,r["invoice_id"],json.dumps(metadata, default=str),_parse_dt(r.get("expires_at")))
     return r,"ok"
 
 async def _transaction_post(bot,typ,uid,qty,amount,provider,meta=None):
