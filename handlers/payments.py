@@ -337,7 +337,23 @@ async def approve(c):
    elif r['target_type']=='stars':
     await conn.execute("UPDATE users SET stars=stars+$1 WHERE user_id=$2",r['quantity'],r['user_id'])
    elif r['target_type']=='vip':
-    await conn.execute("UPDATE users SET vip=TRUE,vip_until=GREATEST(COALESCE(vip_until,NOW()),NOW())+($1||' days')::interval WHERE user_id=$2",int(r['quantity']),r['user_id'])
+    await conn.execute("""
+     UPDATE users
+     SET vip=TRUE,
+         vip_until=GREATEST(COALESCE(vip_until,NOW()),NOW())+($1||' days')::interval,
+         vip_plan_days=$1,
+         vip_daily_limit=CASE
+             WHEN $1=1 THEN 2
+             WHEN $1=3 THEN 4
+             WHEN $1=5 THEN 6
+             WHEN $1=7 THEN 7
+             WHEN $1=10 THEN 10
+             WHEN $1=15 THEN 15
+             WHEN $1=30 THEN 30
+             ELSE GREATEST($1,1)
+         END
+     WHERE user_id=$2
+    """,int(r['quantity']),r['user_id'])
    elif r['target_type']=='creator':
     await conn.execute("UPDATE users SET creator_status=CASE WHEN creator_status='approved' THEN creator_status ELSE 'pending' END WHERE user_id=$1",r['user_id'])
    else:

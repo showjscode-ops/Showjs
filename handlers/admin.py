@@ -448,7 +448,7 @@ async def role_apply(c):
  if role=='member':
   await p.execute("UPDATE users SET is_admin=FALSE,is_creator=FALSE,creator_status='none',vip=FALSE,vip_until=NULL WHERE user_id=$1",uid)
  elif role=='vip':
-  await p.execute("UPDATE users SET is_admin=FALSE,is_creator=FALSE,creator_status='none',vip=TRUE,vip_until=NOW()+INTERVAL '30 days' WHERE user_id=$1",uid)
+  await p.execute("UPDATE users SET is_admin=FALSE,is_creator=FALSE,creator_status='none',vip=TRUE,vip_until=NOW()+INTERVAL '30 days',vip_plan_days=30,vip_daily_limit=30 WHERE user_id=$1",uid)
  elif role=='creator':
   await p.execute("UPDATE users SET is_admin=FALSE,is_creator=TRUE,creator_status='approved',creator_previous=TRUE WHERE user_id=$1",uid)
  elif role=='admin':
@@ -782,7 +782,7 @@ async def user_action(m):
  parts=(m.text or '').split()
  if len(parts)<3:return await m.answer('/user USER_ID vip|creator|admin|ban|unban|unlock')
  uid=int(parts[1]); action=parts[2].lower(); p=await get_pool()
- if action=='vip': await p.execute("UPDATE users SET vip=TRUE,vip_until=NOW()+INTERVAL '30 days' WHERE user_id=$1",uid)
+ if action=='vip': await p.execute("UPDATE users SET vip=TRUE,vip_until=NOW()+INTERVAL '30 days',vip_plan_days=30,vip_daily_limit=30 WHERE user_id=$1",uid)
  elif action=='creator': await p.execute("UPDATE users SET is_creator=TRUE,creator_status='approved' WHERE user_id=$1",uid)
  elif action=='admin':
   await p.execute("UPDATE users SET is_admin=TRUE WHERE user_id=$1",uid)

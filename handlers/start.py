@@ -7,7 +7,23 @@ from keyboards.menu import home_kb,other_menu_kb
 from utils.economy import ensure_user,is_creator,is_vip
 from middlewares.subscription import subscription_prompt
 from utils.callback_loading import loading
+from utils.i18n import get_lang,set_lang,SUPPORTED,LANG_KB
 router=Router()
+
+def language_kb():
+    return InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="🇮🇩 Indonesia", callback_data="lang:id")],
+        [InlineKeyboardButton(text="🇬🇧 English", callback_data="lang:en")],
+        [InlineKeyboardButton(text="🇨🇳 中文", callback_data="lang:zh")],
+    ])
+
+async def language_prompt(m):
+    await m.answer(
+        "🌐 <b>Pilih Bahasa / Choose Language / 选择语言</b>\n\n"
+        "Pilih bahasa yang akan digunakan bot:",
+        parse_mode="HTML", reply_markup=language_kb()
+    )
+
 async def dashboard_text(uid):
  p=await get_pool(); r=await p.fetchrow("SELECT points,stars,balance,is_creator,creator_status,vip,vip_until FROM users WHERE user_id=$1",uid)
  creator=bool(r and r['is_creator'] and r['creator_status']=='approved')
@@ -19,8 +35,13 @@ async def dashboard_text(uid):
 async def start(m):
  await ensure_user(m.from_user.id,m.from_user.username,m.from_user.full_name)
  await (await get_pool()).execute("UPDATE users SET bot_started_at=NOW() WHERE user_id=$1",m.from_user.id)
- # Telegram deep-link: https://t.me/<bot>?start=<CODE>
+ current_lang=await get_lang(m.from_user.id)
  parts=(m.text or '').split(maxsplit=1)
+ if not current_lang:
+  pending=parts[1].strip() if len(parts)==2 and parts[1].strip() else None
+  await (await get_pool()).execute("UPDATE users SET pending_start_code=$1 WHERE user_id=$2",pending,m.from_user.id)
+  return await language_prompt(m)
+ # Telegram deep-link: https://t.me/<bot>?start=<CODE>
  if len(parts)==2 and parts[1].strip():
   code=parts[1].strip()
   p=await get_pool()
@@ -37,6 +58,36 @@ async def start(m):
     parse_mode='HTML',reply_markup=InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text='📥 Buka Code',callback_data=f'getcode:{f["code"]}')]]))
    return
  t,_=await dashboard_text(m.from_user.id); await send_points_help(m); await m.answer(t,parse_mode='HTML',reply_markup=home_kb())
+
+
+@router.callback_query(F.data.startswith("lang:"))
+async def choose_language(c):
+    lang=c.data.split(":",1)[1]
+    if lang not in SUPPORTED:
+        return await c.answer("Language unavailable.", show_alert=True)
+    await set_lang(c.from_user.id,lang)
+    try:
+        import bot as _botmod
+        _botmod._LANG_CACHE[c.from_user.id] = lang
+    except Exception:
+        pass
+    p=await get_pool()
+    pending=await p.fetchval("SELECT pending_start_code FROM users WHERE user_id=$1",c.from_user.id)
+    await p.execute("UPDATE users SET pending_start_code=NULL WHERE user_id=$1",c.from_user.id)
+    await c.answer()
+    if pending:
+        from handlers.getfile import show
+        return await show(c.message,pending)
+    t,_=await dashboard_text(c.from_user.id)
+    await c.message.edit_text(t,parse_mode="HTML",reply_markup=home_kb())
+
+@router.callback_query(F.data=="change_language")
+async def change_language(c):
+    await c.answer()
+    await c.message.edit_text(
+        "🌐 <b>Pilih Bahasa / Choose Language / 选择语言</b>\n\nPilih bahasa yang akan digunakan bot:",
+        parse_mode="HTML", reply_markup=language_kb()
+    )
 
 @router.callback_query(F.data=='home')
 async def home(c):

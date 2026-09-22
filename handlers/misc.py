@@ -1,12 +1,26 @@
 from aiogram import Router,F
+from aiogram.fsm.state import StatesGroup, State
+from aiogram.fsm.context import FSMContext
 from aiogram.types import Message, CallbackQuery, InlineKeyboardMarkup, InlineKeyboardButton
 import html
+import re
+from decimal import Decimal
 from database import get_pool
 from utils.economy import checkin
 from config import CODE_GROUP_ID, CODE_GROUP_URL, NOTICE_CHANNEL_URL, CODE_GROUP_TITLE, NOTIF_CHANNEL_ID, BOT_USERNAME, CREATOR_ADMIN_ID
 
 from utils.callback_loading import loading
 router=Router()
+
+class TransferState(StatesGroup):
+    username = State()
+    amount = State()
+
+def _buy_balance_kb(kind: str):
+    return InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text=f"🛒 Buy {'Poin' if kind=='points' else 'Star'}", callback_data='buy_points' if kind=='points' else 'buy_stars')]
+    ])
+
 
 def _code_link(code: str) -> str:
     return f"https://t.me/{BOT_USERNAME}?start={code}"
@@ -506,6 +520,118 @@ async def open_group_info(c):
 async def open_notice_info(c):
     await c.answer('Channel Notifikasi belum dikonfigurasi URL-nya.',show_alert=True)
 
+
+@router.callback_query(F.data == 'send_points')
+async def send_points_start(c, state: FSMContext):
+    await state.clear()
+    await state.set_state(TransferState.username)
+    await c.message.answer(
+        "🪙 <b>KIRIM POIN</b>\n\n"
+        "Masukkan <b>username Telegram penerima</b>.\n"
+        "Contoh: <code>@username</code>",
+        parse_mode='HTML'
+    )
+    await c.answer()
+
+@router.callback_query(F.data == 'send_stars')
+async def send_stars_start(c, state: FSMContext):
+    await state.clear()
+    await state.set_state(TransferState.username)
+    await state.update_data(kind='stars')
+    await c.message.answer(
+        "⭐ <b>KIRIM STAR</b>\n\n"
+        "Masukkan <b>username Telegram penerima</b>.\n"
+        "Contoh: <code>@username</code>",
+        parse_mode='HTML'
+    )
+    await c.answer()
+
+@router.message(TransferState.username, F.chat.type == 'private', F.text)
+async def transfer_username(m, state: FSMContext):
+    username=(m.text or '').strip().lstrip('@').strip()
+    if not re.fullmatch(r'[A-Za-z0-9_]{5,32}', username):
+        await m.answer("❌ Username tidak valid. Masukkan username seperti <code>@username</code>.", parse_mode='HTML')
+        return
+    p=await get_pool()
+    r=await p.fetchrow("SELECT user_id,username FROM users WHERE lower(username)=lower($1) LIMIT 1", username)
+    if not r:
+        await m.answer("❌ Username belum ditemukan di bot. Pastikan penerima sudah /start terlebih dahulu.")
+        return
+    if int(r['user_id']) == int(m.from_user.id):
+        await m.answer("❌ Kamu tidak bisa mengirim ke username sendiri.")
+        return
+    data=await state.get_data()
+    kind=data.get('kind','points')
+    await state.update_data(receiver_id=int(r['user_id']), receiver_username=username, kind=kind)
+    await state.set_state(TransferState.amount)
+    label='Poin' if kind=='points' else 'Star'
+    await m.answer(
+        f"🪙 <b>KIRIM {label.upper()}</b>\n\n"
+        f"Penerima: <b>@{html.escape(username)}</b>\n"
+        f"Masukkan jumlah {label.lower()} yang ingin dikirim:",
+        parse_mode='HTML'
+    )
+
+@router.message(TransferState.amount, F.chat.type == 'private', F.text)
+async def transfer_amount(m, state: FSMContext):
+    data=await state.get_data()
+    kind=data.get('kind','points')
+    try:
+        amount=Decimal((m.text or '').replace(',','.').strip())
+    except Exception:
+        amount=Decimal('0')
+    if amount <= 0 or amount != amount.quantize(Decimal('0.01')):
+        await m.answer("❌ Nominal tidak valid. Masukkan angka lebih dari 0.")
+        return
+    receiver_id=int(data['receiver_id'])
+    sender_id=int(m.from_user.id)
+    col='points' if kind=='points' else 'stars'
+    table='point_transfers' if kind=='points' else 'star_transfers'
+    label='Poin' if kind=='points' else 'Star'
+    p=await get_pool()
+    async with p.acquire() as conn:
+        async with conn.transaction():
+            sender=await conn.fetchrow(f"SELECT {col},username FROM users WHERE user_id=$1 FOR UPDATE",sender_id)
+            receiver=await conn.fetchrow("SELECT user_id,username FROM users WHERE user_id=$1 FOR UPDATE",receiver_id)
+            if not sender or not receiver:
+                await state.clear()
+                await m.answer("❌ Data pengguna tidak ditemukan.")
+                return
+            balance=Decimal(str(sender[col] or 0))
+            if balance < amount:
+                await state.clear()
+                await m.answer(
+                    f"❌ <b>Poin tidak cukup.</b>\n\n"
+                    f"Saldo kamu: <b>{balance:g} {label}</b>\n"
+                    f"Yang dibutuhkan: <b>{amount:g} {label}</b>",
+                    parse_mode='HTML',
+                    reply_markup=_buy_balance_kb(kind)
+                )
+                return
+            await conn.execute(f"UPDATE users SET {col}={col}-$1 WHERE user_id=$2",amount,sender_id)
+            await conn.execute(f"UPDATE users SET {col}={col}+$1 WHERE user_id=$2",amount,receiver_id)
+            await conn.execute(f"INSERT INTO {table}(sender_id,receiver_id,amount) VALUES($1,$2,$3)",sender_id,receiver_id,amount)
+            new_balance=balance-amount
+    await state.clear()
+    username=data.get('receiver_username','')
+    await m.answer(
+        f"✅ <b>{label} berhasil dikirim</b>\n\n"
+        f"👤 Penerima: <b>@{html.escape(username)}</b>\n"
+        f"💰 Jumlah: <b>{amount:g} {label}</b>\n"
+        f"💳 Sisa saldo: <b>{new_balance:g} {label}</b>",
+        parse_mode='HTML'
+    )
+    try:
+        await m.bot.send_message(
+            receiver_id,
+            f"🎁 <b>Kamu menerima {label}</b>\n\n"
+            f"👤 Dari: <b>@{html.escape(m.from_user.username or str(sender_id))}</b>\n"
+            f"💰 Jumlah: <b>{amount:g} {label}</b>",
+            parse_mode='HTML'
+        )
+    except Exception:
+        pass
+
 @router.message(F.chat.type=='private', F.text, ~F.text.startswith('/'))
 async def keyword_help(m:Message):
     text=(m.text or '').strip().lower()
@@ -517,12 +643,18 @@ async def keyword_help(m:Message):
     if text in {'poin','point','points'}:
         p=await get_pool(); bal=await p.fetchval('SELECT points FROM users WHERE user_id=$1',m.from_user.id) or 0
         await m.answer(f'🪙 <b>Poin kamu sekarang: {float(bal):g}</b>',parse_mode='HTML',
-                       reply_markup=InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text='🛒 Buy Poin',callback_data='buy_points')]]))
+                       reply_markup=InlineKeyboardMarkup(inline_keyboard=[
+                           [InlineKeyboardButton(text='🛒 Buy Poin',callback_data='buy_points')],
+                           [InlineKeyboardButton(text='📤 Kirim Poin',callback_data='send_points')]
+                       ]))
         return
     if text in {'star','stars'}:
         p=await get_pool(); bal=await p.fetchval('SELECT stars FROM users WHERE user_id=$1',m.from_user.id) or 0
         await m.answer(f'⭐ <b>Star kamu sekarang: {float(bal):g}</b>',parse_mode='HTML',
-                       reply_markup=InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text='🛒 Buy Star',callback_data='buy_stars')]]))
+                       reply_markup=InlineKeyboardMarkup(inline_keyboard=[
+                           [InlineKeyboardButton(text='🛒 Buy Star',callback_data='buy_stars')],
+                           [InlineKeyboardButton(text='📤 Kirim Star',callback_data='send_stars')]
+                       ]))
 
 async def media_hint(m:Message):
     await m.answer('📎 <b>Media terdeteksi</b>\n\nTekan tombol di bawah untuk upload.',parse_mode='HTML',
