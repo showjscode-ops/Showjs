@@ -149,7 +149,23 @@ async def finalize_purchase(invoice,status_amount=None):
         elif typ=="stars":
             await c.execute("UPDATE users SET stars=stars+$1 WHERE user_id=$2",qty,uid)
         elif typ=="vip":
-            await c.execute("UPDATE users SET vip=TRUE,vip_until=GREATEST(COALESCE(vip_until,NOW()),NOW())+($1||' days')::interval WHERE user_id=$2",int(qty),uid)
+            await c.execute("""
+            UPDATE users
+            SET vip=TRUE,
+                vip_until=GREATEST(COALESCE(vip_until,NOW()),NOW())+($1||' days')::interval,
+                vip_plan_days=$1,
+                vip_daily_limit=CASE
+                    WHEN $1=1 THEN 2
+                    WHEN $1=3 THEN 4
+                    WHEN $1=5 THEN 6
+                    WHEN $1=7 THEN 7
+                    WHEN $1=10 THEN 10
+                    WHEN $1=15 THEN 15
+                    WHEN $1=30 THEN 30
+                    ELSE GREATEST($1,2)
+                END
+            WHERE user_id=$2
+        """,int(qty),uid)
         elif typ=="creator":
             # Payment success records the creator registration. Admin can
             # complete approval/evaluation separately.
