@@ -18,7 +18,8 @@ def other_menu_kb(creator=False):
     else:
         rows.append([InlineKeyboardButton(text="👑 Jadi Kreator",callback_data="creator_apply")])
     rows.append([InlineKeyboardButton(text="🎁 Check In",callback_data="checkin"),InlineKeyboardButton(text="❓ Help",callback_data="help")])
+    rows.append([InlineKeyboardButton(text="🌐 Ganti Bahasa",callback_data="change_language")])
     rows.append([InlineKeyboardButton(text="🔙 Kembali",callback_data="home")])
     return InlineKeyboardMarkup(inline_keyboard=rows)
 def provider_kb(prefix):
-    return InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text="⚡ BayarGG",callback_data=f"provider:{prefix}:bayargg")],[InlineKeyboardButton(text="💳 Cashi",callback_data=f"provider:{prefix}:cashi")],[InlineKeyboardButton(text="🧾 QR Manual",callback_data=f"manualpkg:{prefix}")],[InlineKeyboardButton(text="🔙 Kembali",callback_data="home")]])
+    return InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text="QR 2",callback_data=f"provider:{prefix}:bayargg")],[InlineKeyboardButton(text="QR 1",callback_data=f"provider:{prefix}:cashi")],[InlineKeyboardButton(text="🧾 QR Manual",callback_data=f"manualpkg:{prefix}")],[InlineKeyboardButton(text="🔙 Kembali",callback_data="home")]])
