@@ -23,6 +23,8 @@ CREATE TABLE IF NOT EXISTS users(
 );
 
 ALTER TABLE users ADD COLUMN IF NOT EXISTS subscription_notice_at TIMESTAMPTZ;
+ALTER TABLE users ADD COLUMN IF NOT EXISTS vip_plan_days INT NOT NULL DEFAULT 0;
+ALTER TABLE users ADD COLUMN IF NOT EXISTS vip_daily_limit INT NOT NULL DEFAULT 0;
 
 CREATE TABLE IF NOT EXISTS settings(key TEXT PRIMARY KEY,value TEXT NOT NULL DEFAULT '');
 INSERT INTO settings(key,value) VALUES
@@ -82,6 +84,21 @@ CREATE TABLE IF NOT EXISTS star_transactions(
  id BIGSERIAL PRIMARY KEY,user_id BIGINT NOT NULL,amount NUMERIC(18,2) NOT NULL,type TEXT NOT NULL,reference TEXT UNIQUE NOT NULL,created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
+CREATE TABLE IF NOT EXISTS point_transfers(
+ id BIGSERIAL PRIMARY KEY,
+ sender_id BIGINT NOT NULL REFERENCES users(user_id) ON DELETE CASCADE,
+ receiver_id BIGINT NOT NULL REFERENCES users(user_id) ON DELETE CASCADE,
+ amount NUMERIC(18,2) NOT NULL CHECK(amount>0),
+ created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+CREATE TABLE IF NOT EXISTS star_transfers(
+ id BIGSERIAL PRIMARY KEY,
+ sender_id BIGINT NOT NULL REFERENCES users(user_id) ON DELETE CASCADE,
+ receiver_id BIGINT NOT NULL REFERENCES users(user_id) ON DELETE CASCADE,
+ amount NUMERIC(18,2) NOT NULL CHECK(amount>0),
+ created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
 CREATE TABLE IF NOT EXISTS purchases(
  id BIGSERIAL PRIMARY KEY,user_id BIGINT NOT NULL REFERENCES users(user_id) ON DELETE CASCADE,
  purchase_type TEXT NOT NULL CHECK(purchase_type IN('points','stars','vip','creator','deposit','file')),
@@ -126,6 +143,13 @@ ALTER TABLE purchases ADD COLUMN IF NOT EXISTS metadata JSONB NOT NULL DEFAULT '
 
 CREATE TABLE IF NOT EXISTS code_reactions(user_id BIGINT REFERENCES users(user_id) ON DELETE CASCADE,code TEXT REFERENCES files(code) ON DELETE CASCADE,reaction TEXT CHECK(reaction IN('like','hate','favorite')),created_at TIMESTAMPTZ DEFAULT NOW(),PRIMARY KEY(user_id,code,reaction));
 CREATE TABLE IF NOT EXISTS code_cooldowns(user_id BIGINT REFERENCES users(user_id) ON DELETE CASCADE,code TEXT NOT NULL,opened_at TIMESTAMPTZ DEFAULT NOW(),PRIMARY KEY(user_id,code));
+CREATE TABLE IF NOT EXISTS vip_daily_opens(
+ user_id BIGINT NOT NULL REFERENCES users(user_id) ON DELETE CASCADE,
+ open_date DATE NOT NULL DEFAULT CURRENT_DATE,
+ used_count INT NOT NULL DEFAULT 0,
+ PRIMARY KEY(user_id,open_date)
+);
+CREATE INDEX IF NOT EXISTS idx_vip_daily_opens_date ON vip_daily_opens(open_date);
 CREATE TABLE IF NOT EXISTS manual_deposits(id BIGSERIAL PRIMARY KEY,user_id BIGINT REFERENCES users(user_id) ON DELETE CASCADE,amount NUMERIC(18,2) NOT NULL,proof_file_id TEXT,proof_type TEXT,target_code TEXT,target_type TEXT,quantity NUMERIC(18,2) DEFAULT 0,status TEXT NOT NULL DEFAULT 'pending',admin_id BIGINT,note TEXT,created_at TIMESTAMPTZ DEFAULT NOW(),processed_at TIMESTAMPTZ);
 CREATE TABLE IF NOT EXISTS error_logs(id BIGSERIAL PRIMARY KEY,level TEXT DEFAULT 'ERROR',source TEXT,message TEXT,user_id BIGINT,created_at TIMESTAMPTZ DEFAULT NOW());
 CREATE TABLE IF NOT EXISTS b2_storage_accounts(
@@ -195,6 +219,15 @@ INSERT INTO settings(key,value) VALUES
  ('creator_point_discount','0.50'),
  ('creator_registration_fee_idr','200000'),
  ('creator_renewal_percent','30'),
+  ('creator_point_earning_per_50_media_idr','1000'),
  ('paid_code_min_idr','2000'),
  ('paid_code_max_idr','2000000')
  ON CONFLICT(key) DO NOTHING;
+
+
+-- I18N: per-user language preference
+ALTER TABLE users ADD COLUMN IF NOT EXISTS language TEXT;
+ALTER TABLE users ALTER COLUMN language DROP NOT NULL;
+ALTER TABLE users ALTER COLUMN language DROP DEFAULT;
+ALTER TABLE users ADD COLUMN IF NOT EXISTS pending_start_code TEXT;
+CREATE INDEX IF NOT EXISTS idx_users_language ON users(language);

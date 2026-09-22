@@ -5,13 +5,111 @@ from aiogram.client.telegram import TelegramAPIServer
 from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton, CallbackQuery
 from config import BOT_TOKEN, TELEGRAM_API_BASE
 from middlewares.subscription import SubscriptionMiddleware
+from utils.i18n import get_lang, translate
 import asyncio
+
+_LANG_CACHE = {}
+
+async def _out_lang(chat_id):
+    try:
+        cid = int(chat_id)
+        if cid in _LANG_CACHE:
+            return _LANG_CACHE[cid]
+        lang = await get_lang(cid)
+        if lang:
+            _LANG_CACHE[cid] = lang
+        return lang or "id"
+    except Exception:
+        return "id"
+
+def _localize_markup(markup, lang):
+    if not markup or not getattr(markup, "inline_keyboard", None):
+        return markup
+    try:
+        rows=[]
+        for row in markup.inline_keyboard:
+            rows.append([btn.model_copy(update={"text": translate(btn.text,lang)}) for btn in row])
+        return markup.model_copy(update={"inline_keyboard": rows})
+    except Exception:
+        return markup
 
 class TrackedBot(Bot):
     async def send_message(self, *args, **kwargs):
+        chat_id = kwargs.get("chat_id", args[0] if args else None)
+        lang = await _out_lang(chat_id)
+        if "text" in kwargs:
+            kwargs["text"] = translate(kwargs["text"], lang)
+        elif len(args) >= 2:
+            args = list(args)
+            args[1] = translate(args[1], lang)
+            args = tuple(args)
+        if "reply_markup" in kwargs:
+            kwargs["reply_markup"] = _localize_markup(kwargs["reply_markup"], lang)
         msg = await super().send_message(*args, **kwargs)
         _track_message(msg)
         return msg
+
+    async def send_photo(self, *args, **kwargs):
+        chat_id = kwargs.get("chat_id", args[0] if args else None)
+        lang = await _out_lang(chat_id)
+        if "caption" in kwargs:
+            kwargs["caption"] = translate(kwargs["caption"], lang)
+        if "reply_markup" in kwargs:
+            kwargs["reply_markup"] = _localize_markup(kwargs["reply_markup"], lang)
+        return await super().send_photo(*args, **kwargs)
+
+    async def send_video(self, *args, **kwargs):
+        chat_id = kwargs.get("chat_id", args[0] if args else None)
+        lang = await _out_lang(chat_id)
+        if "caption" in kwargs:
+            kwargs["caption"] = translate(kwargs["caption"], lang)
+        if "reply_markup" in kwargs:
+            kwargs["reply_markup"] = _localize_markup(kwargs["reply_markup"], lang)
+        return await super().send_video(*args, **kwargs)
+
+    async def send_audio(self, *args, **kwargs):
+        chat_id = kwargs.get("chat_id", args[0] if args else None)
+        lang = await _out_lang(chat_id)
+        if "caption" in kwargs:
+            kwargs["caption"] = translate(kwargs["caption"], lang)
+        if "reply_markup" in kwargs:
+            kwargs["reply_markup"] = _localize_markup(kwargs["reply_markup"], lang)
+        return await super().send_audio(*args, **kwargs)
+
+    async def send_document(self, *args, **kwargs):
+        chat_id = kwargs.get("chat_id", args[0] if args else None)
+        lang = await _out_lang(chat_id)
+        if "caption" in kwargs:
+            kwargs["caption"] = translate(kwargs["caption"], lang)
+        if "reply_markup" in kwargs:
+            kwargs["reply_markup"] = _localize_markup(kwargs["reply_markup"], lang)
+        return await super().send_document(*args, **kwargs)
+
+    async def edit_message_text(self, *args, **kwargs):
+        chat_id = kwargs.get("chat_id", args[0] if args else None)
+        lang = await _out_lang(chat_id)
+        if "text" in kwargs:
+            kwargs["text"] = translate(kwargs["text"], lang)
+        elif len(args) >= 3:
+            args = list(args); args[2] = translate(args[2], lang); args = tuple(args)
+        if "reply_markup" in kwargs:
+            kwargs["reply_markup"] = _localize_markup(kwargs["reply_markup"], lang)
+        return await super().edit_message_text(*args, **kwargs)
+
+    async def answer_callback_query(self, *args, **kwargs):
+        callback_id = kwargs.get("callback_query_id", args[0] if args else None)
+        # callback id does not expose chat id; use explicit show text only as-is.
+        # Most callback alerts are short and language-neutral. Keep them untouched.
+        return await super().answer_callback_query(*args, **kwargs)
+
+    async def edit_message_caption(self, *args, **kwargs):
+        chat_id = kwargs.get("chat_id", args[0] if args else None)
+        lang = await _out_lang(chat_id)
+        if "caption" in kwargs:
+            kwargs["caption"] = translate(kwargs["caption"], lang)
+        if "reply_markup" in kwargs:
+            kwargs["reply_markup"] = _localize_markup(kwargs["reply_markup"], lang)
+        return await super().edit_message_caption(*args, **kwargs)
 
 _session = None
 if TELEGRAM_API_BASE:

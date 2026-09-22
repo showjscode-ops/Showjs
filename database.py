@@ -25,8 +25,8 @@ async def init_db():
       ('payment_bayargg_enabled','on'),('payment_cashi_enabled','on'),
       ('payment_manual_enabled','on'),('payment_balance_enabled','on'),
       ('trial_enabled','on'),('withdraw_enabled','on'),('maintenance','off'),
-      ('vip_code_delay_minutes','30'),('media_send_delay_ms','250'),
-      ('manual_qr_file_id',''),('preferred_b2_account','0')
+      ('vip_code_delay_minutes','30'),('media_send_delay_ms','3000'),
+      ('manual_qr_file_id',''),('preferred_b2_account','0'),('creator_point_earning_per_50_media_idr','1000')
     ON CONFLICT(key) DO NOTHING;
 
     ALTER TABLE users ADD COLUMN IF NOT EXISTS is_admin BOOLEAN NOT NULL DEFAULT FALSE;
@@ -34,6 +34,10 @@ async def init_db():
     ALTER TABLE users ADD COLUMN IF NOT EXISTS banned BOOLEAN NOT NULL DEFAULT FALSE;
     ALTER TABLE users ADD COLUMN IF NOT EXISTS can_unlock BOOLEAN NOT NULL DEFAULT TRUE;
     ALTER TABLE users ADD COLUMN IF NOT EXISTS bot_started_at TIMESTAMPTZ;
+    ALTER TABLE users ADD COLUMN IF NOT EXISTS vip_plan_days INT NOT NULL DEFAULT 0;
+    ALTER TABLE users ADD COLUMN IF NOT EXISTS vip_daily_limit INT NOT NULL DEFAULT 0;
+    ALTER TABLE users ADD COLUMN IF NOT EXISTS language TEXT;
+    ALTER TABLE users ADD COLUMN IF NOT EXISTS pending_start_code TEXT;
 
     ALTER TABLE files ADD COLUMN IF NOT EXISTS tags TEXT[] NOT NULL DEFAULT ARRAY[]::TEXT[];
     ALTER TABLE files ADD COLUMN IF NOT EXISTS price_idr NUMERIC(18,2) NOT NULL DEFAULT 0;
@@ -42,6 +46,22 @@ async def init_db():
     ALTER TABLE files ADD COLUMN IF NOT EXISTS hates BIGINT NOT NULL DEFAULT 0;
     ALTER TABLE files ADD COLUMN IF NOT EXISTS favorites BIGINT NOT NULL DEFAULT 0;
     ALTER TABLE purchases ADD COLUMN IF NOT EXISTS metadata JSONB NOT NULL DEFAULT '{}'::jsonb;
+
+    CREATE TABLE IF NOT EXISTS point_transfers(
+      id BIGSERIAL PRIMARY KEY,
+      sender_id BIGINT NOT NULL REFERENCES users(user_id) ON DELETE CASCADE,
+      receiver_id BIGINT NOT NULL REFERENCES users(user_id) ON DELETE CASCADE,
+      amount NUMERIC(18,2) NOT NULL CHECK(amount>0),
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    );
+
+    CREATE TABLE IF NOT EXISTS star_transfers(
+      id BIGSERIAL PRIMARY KEY,
+      sender_id BIGINT NOT NULL REFERENCES users(user_id) ON DELETE CASCADE,
+      receiver_id BIGINT NOT NULL REFERENCES users(user_id) ON DELETE CASCADE,
+      amount NUMERIC(18,2) NOT NULL CHECK(amount>0),
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    );
 
     CREATE TABLE IF NOT EXISTS code_reactions(
       user_id BIGINT NOT NULL REFERENCES users(user_id) ON DELETE CASCADE,
@@ -57,6 +77,14 @@ async def init_db():
       opened_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
       PRIMARY KEY(user_id,code)
     );
+
+    CREATE TABLE IF NOT EXISTS vip_daily_opens(
+      user_id BIGINT NOT NULL REFERENCES users(user_id) ON DELETE CASCADE,
+      open_date DATE NOT NULL DEFAULT CURRENT_DATE,
+      used_count INT NOT NULL DEFAULT 0,
+      PRIMARY KEY(user_id,open_date)
+    );
+    CREATE INDEX IF NOT EXISTS idx_vip_daily_opens_date ON vip_daily_opens(open_date);
 
     CREATE TABLE IF NOT EXISTS manual_deposits(
       id BIGSERIAL PRIMARY KEY,
