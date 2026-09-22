@@ -1,54 +1,122 @@
-import uuid,httpx,logging
-from config import CASHI_API_KEY,CASHI_BASE_URL,CASHI_PAYMENT_CHANNEL,CASHI_MIN_AMOUNT,CASHI_MAX_AMOUNT
-log=logging.getLogger(__name__)
+import logging
+import uuid
+from datetime import datetime, timezone
+import httpx
+from config import (
+    CASHI_API_KEY, CASHI_BASE_URL, CASHI_PAYMENT_CHANNEL,
+    CASHI_MIN_AMOUNT, CASHI_MAX_AMOUNT
+)
+logger = logging.getLogger(__name__)
+
+def _unwrap(raw):
+    if not isinstance(raw, dict):
+        return {}
+    d = raw.get("data") if isinstance(raw.get("data"), dict) else {}
+    if isinstance(raw.get("result"), dict):
+        d = {**d, **raw["result"]}
+    return {**d, **raw}
+
+def _status(v):
+    return str(v or "").strip().lower().replace("-", "_").replace(" ", "_")
+
+def _amount(v, default=0):
+    try:
+        if v is None or v == "":
+            return int(default)
+        return int(float(v))
+    except (TypeError, ValueError):
+        return int(default)
+
+def _parse_dt(v):
+    if not v:
+        return None
+    if isinstance(v, datetime):
+        return v if v.tzinfo else v.replace(tzinfo=timezone.utc)
+    try:
+        d=datetime.fromisoformat(str(v).replace("Z","+00:00"))
+        return d if d.tzinfo else d.replace(tzinfo=timezone.utc)
+    except Exception:
+        return None
 
 class Cashi:
     @staticmethod
-    async def create_payment(amount,description,customer_name="Customer"):
-        if not CASHI_API_KEY or not CASHI_MIN_AMOUNT<=int(amount)<=CASHI_MAX_AMOUNT: return None
+    async def create_payment(amount, description, customer_name="Customer"):
+        amount=_amount(amount)
+        if not CASHI_API_KEY or not (int(CASHI_MIN_AMOUNT) <= amount <= int(CASHI_MAX_AMOUNT)):
+            return None
         order=f"FILE-{uuid.uuid4().hex[:16]}"
-        body={"amount":int(amount),"order_id":order,"kode_channel":CASHI_PAYMENT_CHANNEL,"description":str(description)[:200],"customer_name":str(customer_name or "Customer")[:100]}
+        body={
+            "amount":amount,
+            "order_id":order,
+            "kode_channel":CASHI_PAYMENT_CHANNEL,
+            "description":str(description or "")[:200],
+            "customer_name":str(customer_name or "Customer")[:100],
+        }
         try:
             async with httpx.AsyncClient(timeout=30) as c:
-                r=await c.post(f"{CASHI_BASE_URL}/api/create-order",json=body,headers={"x-api-key":CASHI_API_KEY,"Content-Type":"application/json","Accept":"application/json"})
+                r=await c.post(
+                    f"{CASHI_BASE_URL}/api/create-order",
+                    json=body,
+                    headers={"x-api-key":CASHI_API_KEY,"Content-Type":"application/json","Accept":"application/json"},
+                )
                 raw=r.json()
-                if r.status_code >= 400:
-                    log.error("Cashi create HTTP %s: %s",r.status_code,raw); return None
-            if not raw.get("success",True):
-                log.error("Cashi create rejected: %s",raw); return None
-            d=raw.get("data") if isinstance(raw.get("data"),dict) else {}
-            merged={**d,**raw}
-            oid=str(merged.get("orderId") or merged.get("order_id") or merged.get("invoice_id") or order)
-            qr=merged.get("qrUrl") or merged.get("qr_url") or merged.get("qris") or merged.get("qr_string")
-            url=merged.get("checkout_url") or merged.get("payment_url") or (qr if isinstance(qr,str) and qr.startswith("http") else None)
-            return {"invoice_id":oid,"order_id":oid,"qr_string":qr if isinstance(qr,str) and not qr.startswith("http") else None,"payment_url":url,"amount":int(merged.get("amount") or amount)}
+            logger.info("CASHI CREATE HTTP %s | %s",r.status_code,raw)
+            if r.status_code >= 400 or (isinstance(raw,dict) and raw.get("success") is False):
+                return None
+            d=_unwrap(raw)
+            oid=str(d.get("orderId") or d.get("order_id") or d.get("invoice_id") or order)
+            qr=d.get("qrUrl") or d.get("qr_url") or d.get("qris") or d.get("qr_string") or d.get("qr")
+            checkout=d.get("checkout_url") or d.get("payment_url")
+            if isinstance(qr,str) and qr.startswith("http") and not checkout:
+                checkout=qr
+            return {
+                "invoice_id":oid,
+                "order_id":oid,
+                "qr_string":qr if isinstance(qr,str) and not qr.startswith("http") else None,
+                "qr_image":qr if isinstance(qr,str) else None,
+                "payment_url":checkout,
+                "amount":_amount(d.get("amount"),amount),
+                "final_amount":_amount(d.get("final_amount"),_amount(d.get("amount"),amount)),
+                "expires_at":_parse_dt(d.get("expires_at") or d.get("expired_at")),
+                "status":_status(d.get("status")),
+            }
         except Exception:
-            log.exception("Cashi create payment failed")
+            logger.exception("CASHI create payment failed")
             return None
 
     @staticmethod
     async def check_payment(order_id):
-        if not CASHI_API_KEY: return None
+        if not CASHI_API_KEY:
+            return None
         try:
             async with httpx.AsyncClient(timeout=30) as c:
-                r=await c.get(f"{CASHI_BASE_URL}/api/check-status/{order_id}",headers={"x-api-key":CASHI_API_KEY,"Accept":"application/json"})
+                r=await c.get(
+                    f"{CASHI_BASE_URL}/api/check-status/{order_id}",
+                    headers={"x-api-key":CASHI_API_KEY,"Accept":"application/json"},
+                )
                 raw=r.json()
-                if r.status_code >= 400: return None
-            d=raw.get("data") if isinstance(raw.get("data"),dict) else {}
-            merged={**d,**raw}
-            if isinstance(merged.get("result"),dict):
-                merged={**merged,**merged["result"]}
-            status=str(
-                merged.get("status")
-                or merged.get("payment_status")
-                or merged.get("paymentStatus")
-                or merged.get("transaction_status")
-                or ""
-            ).lower().strip()
-            amount=merged.get("amount") or merged.get("paid_amount") or merged.get("final_amount") or 0
-            try: amount=int(amount)
-            except Exception: amount=0
-            return {"invoice_id":str(merged.get("order_id") or merged.get("orderId") or merged.get("invoice_id") or order_id),"status":status,"amount":amount}
+            if r.status_code >= 400:
+                logger.error("CASHI CHECK HTTP %s | %s",r.status_code,raw)
+                return None
+            d=_unwrap(raw)
+            status=_status(
+                d.get("status") or d.get("payment_status") or
+                d.get("paymentStatus") or d.get("transaction_status") or
+                d.get("event")
+            )
+            amount=_amount(d.get("amount"),0)
+            if not amount:
+                amount=_amount(d.get("paid_amount"),0)
+            if not amount:
+                amount=_amount(d.get("final_amount"),0)
+            return {
+                "invoice_id":str(d.get("order_id") or d.get("orderId") or d.get("invoice_id") or order_id),
+                "status":status,
+                "amount":amount,
+                "final_amount":amount,
+                "paid_at":d.get("paid_at"),
+                "raw":d,
+            }
         except Exception:
-            log.exception("Cashi check payment failed")
+            logger.exception("CASHI check payment failed")
             return None
