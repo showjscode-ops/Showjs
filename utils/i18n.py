@@ -78,6 +78,17 @@ DICT = {
 }
 }
 
+# Broad UI word/phrase fallback. This is intentionally limited to common bot UI
+# vocabulary; it avoids translating arbitrary user-generated identifiers.
+WORD_DICT = {
+"en": {
+ "Kirim":"Send","Masukkan":"Enter","Masukkan username":"Enter username","Masukkan nominal":"Enter amount","Tidak ada":"No","ada":"available","gagal":"failed","berhasil":"successful","sukses":"success","Proses":"Process","proses":"process","Sedang":"Currently","tunggu":"wait","Tunggu":"Please wait","pilih":"choose","Pilih":"Choose","untuk":"for","dengan":"with","tanpa":"without","milik":"owned by","sendiri":"own","dibuka":"opened","buka":"open","membuka":"opening","tersedia":"available","tidak":"not","ditemukan":"found","aktif":"active","nonaktif":"inactive","Harga":"Price","harga":"price","Jumlah":"Amount","jumlah":"amount","Total":"Total","total":"total","media":"media","Code":"Code","code":"code","User":"User","user":"user","Admin":"Admin","Creator":"Creator","Kreator":"Creator","Poin":"Points","poin":"points","Star":"Stars","Saldo":"Balance","VIP":"VIP","Gratis":"Free","FREE":"FREE","Bayar":"Pay","Pembayaran":"Payment","Pembayaran":"Payment","beli":"buy","Beli":"Buy","Belum":"Not yet","sudah":"already","Hari":"Days","hari":"days","Jam":"Hours","jam":"hours","menit":"minutes","detik":"seconds","waktu":"time","akses":"access","Akses":"Access","batas":"limit","Batas":"Limit","perpanjangan":"extension","Perpanjangan":"Extension","akun":"account","Akun":"Account","bahasa":"language","Bahasa":"Language","kembali":"back","Kembali":"Back","Lanjut":"Continue","Batal":"Cancel","Selesai":"Done","Simpan":"Save","Hapus":"Delete","Edit":"Edit","Tambah":"Add","Pilih":"Choose","Daftar":"Register","Masuk":"Login","Keluar":"Logout","notifikasi":"notification","Notifikasi":"Notification","alasan":"reason","Alasan":"Reason","nama":"name","Nama":"Name","judul":"title","Judul":"Title","tag":"tag","Tag":"Tag","role":"role","Role":"Role","status":"status","Status":"Status","saldo":"balance","poin":"points","star":"stars","withdraw":"withdrawal","Withdraw":"Withdrawal","manual":"manual","otomatis":"automatically","Otomatis":"Automatically","kirim":"send","terima":"receive","diterima":"received","sisa":"remaining","satu":"one","semua":"all","media":"media","Views":"Views","Like":"Like","Hate":"Hate","Favorit":"Favorite","Favorit":"Favorite","Error":"Error","Kesalahan":"Error","berikut":"following","silakan":"please","Silakan":"Please","contoh":"example","Contoh":"Example","catatan":"note","Catatan":"Note"
+},
+"zh": {
+ "Kirim":"发送","Masukkan":"输入","Masukkan username":"输入用户名","Masukkan nominal":"输入金额","Tidak ada":"没有","ada":"有","gagal":"失败","berhasil":"成功","sukses":"成功","Proses":"处理","proses":"处理","Sedang":"正在","tunggu":"等待","Tunggu":"请稍候","pilih":"选择","Pilih":"选择","untuk":"用于","dengan":"使用","tanpa":"无需","milik":"属于","sendiri":"自己","dibuka":"已打开","buka":"打开","membuka":"打开","tersedia":"可用","tidak":"不","ditemukan":"找到","aktif":"启用","nonaktif":"停用","Harga":"价格","harga":"价格","Jumlah":"数量","jumlah":"数量","Total":"总计","total":"总计","media":"媒体","Code":"代码","code":"代码","User":"用户","user":"用户","Admin":"管理员","Creator":"创作者","Kreator":"创作者","Poin":"积分","poin":"积分","Star":"Star","Saldo":"余额","VIP":"VIP","Gratis":"免费","FREE":"免费","Bayar":"支付","Pembayaran":"支付","beli":"购买","Beli":"购买","Belum":"尚未","sudah":"已经","Hari":"天","hari":"天","Jam":"小时","jam":"小时","menit":"分钟","detik":"秒","waktu":"时间","akses":"访问","Akses":"访问","batas":"限制","Batas":"限制","perpanjangan":"续期","Perpanjangan":"续期","akun":"账户","Akun":"账户","bahasa":"语言","Bahasa":"语言","kembali":"返回","Kembali":"返回","Lanjut":"继续","Batal":"取消","Selesai":"完成","Simpan":"保存","Hapus":"删除","Edit":"编辑","Tambah":"添加","Daftar":"注册","Masuk":"登录","Keluar":"退出","notifikasi":"通知","Notifikasi":"通知","alasan":"原因","Alasan":"原因","nama":"名称","Nama":"名称","judul":"标题","Judul":"标题","tag":"标签","Tag":"标签","role":"角色","Role":"角色","status":"状态","Status":"状态","saldo":"余额","poin":"积分","star":"Star","withdraw":"提现","Withdraw":"提现","manual":"手动","otomatis":"自动","Otomatis":"自动","kirim":"发送","terima":"接收","diterima":"已收到","sisa":"剩余","semua":"全部","Views":"浏览","Like":"点赞","Hate":"踩","Favorit":"收藏","Error":"错误","Kesalahan":"错误","berikut":"如下","silakan":"请","Silakan":"请","contoh":"示例","Contoh":"示例","catatan":"备注","Catatan":"备注"
+}
+}
+
 def translate(text: str | None, lang: str) -> str | None:
     if not text or lang == "id" or lang not in DICT:
         return text
@@ -85,7 +96,11 @@ def translate(text: str | None, lang: str) -> str | None:
     # Longer phrases first, exact substring replacement.
     for src, dst in sorted(DICT[lang].items(), key=lambda x: len(x[0]), reverse=True):
         out = out.replace(src, dst)
-    # Common dynamic labels.
+    # Common dynamic labels. Apply only after exact phrases.
+    if lang in WORD_DICT:
+        for src, dst in sorted(WORD_DICT[lang].items(), key=lambda x: len(x[0]), reverse=True):
+            # Word-boundary replacement for ordinary UI vocabulary.
+            out = re.sub(r'(?<![A-Za-zÀ-ÿ])' + re.escape(src) + r'(?![A-Za-zÀ-ÿ])', dst, out)
     if lang == "en":
         out = re.sub(r'(\d+)\s+media\b', r'\1 media', out)
     elif lang == "zh":
