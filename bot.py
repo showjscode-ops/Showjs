@@ -9,6 +9,7 @@ from utils.i18n import get_lang, translate
 import asyncio
 
 _LANG_CACHE = {}
+_CALLBACK_CHAT = {}
 
 async def _out_lang(chat_id):
     try:
@@ -32,6 +33,20 @@ def _localize_markup(markup, lang):
         return markup.model_copy(update={"inline_keyboard": rows})
     except Exception:
         return markup
+
+
+def _localize_media_list(media, lang):
+    if not media:
+        return media
+    try:
+        out=[]
+        for item in media:
+            if getattr(item, "caption", None):
+                item=item.model_copy(update={"caption": translate(item.caption, lang)})
+            out.append(item)
+        return out
+    except Exception:
+        return media
 
 class TrackedBot(Bot):
     async def send_message(self, *args, **kwargs):
@@ -85,6 +100,40 @@ class TrackedBot(Bot):
             kwargs["reply_markup"] = _localize_markup(kwargs["reply_markup"], lang)
         return await super().send_document(*args, **kwargs)
 
+    async def send_voice(self, *args, **kwargs):
+        chat_id = kwargs.get("chat_id", args[0] if args else None)
+        lang = await _out_lang(chat_id)
+        if "caption" in kwargs: kwargs["caption"] = translate(kwargs["caption"], lang)
+        if "reply_markup" in kwargs: kwargs["reply_markup"] = _localize_markup(kwargs["reply_markup"], lang)
+        return await super().send_voice(*args, **kwargs)
+
+    async def send_animation(self, *args, **kwargs):
+        chat_id = kwargs.get("chat_id", args[0] if args else None)
+        lang = await _out_lang(chat_id)
+        if "caption" in kwargs: kwargs["caption"] = translate(kwargs["caption"], lang)
+        if "reply_markup" in kwargs: kwargs["reply_markup"] = _localize_markup(kwargs["reply_markup"], lang)
+        return await super().send_animation(*args, **kwargs)
+
+    async def send_video_note(self, *args, **kwargs):
+        return await super().send_video_note(*args, **kwargs)
+
+    async def send_media_group(self, *args, **kwargs):
+        chat_id = kwargs.get("chat_id", args[0] if args else None)
+        lang = await _out_lang(chat_id)
+        if "media" in kwargs: kwargs["media"] = _localize_media_list(kwargs["media"], lang)
+        elif len(args) >= 2:
+            args=list(args); args[1]=_localize_media_list(args[1],lang); args=tuple(args)
+        return await super().send_media_group(*args, **kwargs)
+
+    async def edit_message_media(self, *args, **kwargs):
+        chat_id = kwargs.get("chat_id", args[0] if args else None)
+        lang = await _out_lang(chat_id)
+        media = kwargs.get("media")
+        if media is not None and getattr(media, "caption", None):
+            kwargs["media"] = media.model_copy(update={"caption": translate(media.caption, lang)})
+        if "reply_markup" in kwargs: kwargs["reply_markup"] = _localize_markup(kwargs["reply_markup"], lang)
+        return await super().edit_message_media(*args, **kwargs)
+
     async def edit_message_text(self, *args, **kwargs):
         chat_id = kwargs.get("chat_id", args[0] if args else None)
         lang = await _out_lang(chat_id)
@@ -98,8 +147,9 @@ class TrackedBot(Bot):
 
     async def answer_callback_query(self, *args, **kwargs):
         callback_id = kwargs.get("callback_query_id", args[0] if args else None)
-        # callback id does not expose chat id; use explicit show text only as-is.
-        # Most callback alerts are short and language-neutral. Keep them untouched.
+        chat_id = _CALLBACK_CHAT.get(callback_id)
+        if chat_id is not None and "text" in kwargs:
+            kwargs["text"] = translate(kwargs["text"], await _out_lang(chat_id))
         return await super().answer_callback_query(*args, **kwargs)
 
     async def edit_message_caption(self, *args, **kwargs):
@@ -198,6 +248,8 @@ class ButtonLoadingMiddleware:
         if not isinstance(event, CallbackQuery) or not event.message:
             return await handler(event, data)
 
+        if event.id:
+            _CALLBACK_CHAT[event.id] = event.message.chat.id
         original_markup = event.message.reply_markup
         loading_markup, changed = _loading_markup(original_markup, event)
         if not changed:
