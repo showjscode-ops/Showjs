@@ -1,5 +1,6 @@
-
 from __future__ import annotations
+
+import re
 from datetime import datetime,timedelta,timezone
 import html,json,os,tempfile,asyncio,re
 from aiogram import Router,F
@@ -61,7 +62,7 @@ async def start(c): await loading(c); await c.message.answer('📥 Kirim CODE ya
 # ``<p>p<v>v<d>d`` and ignore accidental spaces/backticks around the code.
 _CODE_RE = re.compile(r'^[^\s_]+_[^\s_]+_\d+p\d+v\d+d$', re.I)
 
-@router.message(F.chat.type == 'private', F.text.regexp(r'^`?[^\s_]+_[^\s_]+_\d+p\d+v\d+d`?$', mode='i'))
+@router.message(F.chat.type == 'private', F.text.regexp(re.compile(r'^`?[^\s_]+_[^\s_]+_\d+p\d+v\d+d`?$', re.IGNORECASE)))
 async def receive(m):
     raw=(m.text or '').strip()
     # Users often paste a code wrapped in backticks or with whitespace.
