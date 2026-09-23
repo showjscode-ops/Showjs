@@ -1,5 +1,7 @@
 
 from aiogram import Router,F
+import asyncio
+from collections import defaultdict
 from aiogram.filters import Command
 from aiogram.types import CallbackQuery,InlineKeyboardMarkup,InlineKeyboardButton,BufferedInputFile,Message
 import html
@@ -7,8 +9,13 @@ from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import StatesGroup,State
 from config import POINT_PACKAGES,STAR_PACKAGES,DEPOSIT_PACKAGES,OWNER_ID,ADMIN_IDS,TRANSACTION_CHANNEL_URL,CREATOR_REGISTRATION_FEE_IDR,CREATOR_RENEWAL_PERCENT
 from database import get_pool
-from utils.payments import create_purchase,qr_bytes,enabled
+from utils.payments import create_purchase,qr_bytes,enabled,save_payment_message_id
 router=Router()
+
+# Per-user payment creation lock: Telegram may deliver multiple rapid callback
+# updates when the Buy button is tapped repeatedly. Serialize them so only one
+# QR message is created/sent. DB idempotency still protects across processes.
+_PAYMENT_LOCKS = defaultdict(asyncio.Lock)
 
 class ManualProofState(StatesGroup):
     proof=State()
@@ -148,18 +155,40 @@ async def provider(c):
   return await c.answer('❌ Provider pembayaran tidak valid.', show_alert=True)
  if not await enabled(provider_name):
   return await c.answer('❌ Provider sedang ditutup oleh admin.', show_alert=True)
- r,status=await create_purchase(c.from_user.id, typ, qty_i, amount_i, provider_name, c.from_user.full_name)
- if not r:
-  msg = (
-   '❌ Pembayaran sedang ditutup.' if status == 'disabled'
-   else '❌ Nominal QR 2 harus Rp5.000–Rp500.000.' if status == 'invalid_amount'
-   else '❌ Gagal membuat pembayaran. Coba lagi.'
-  )
-  return await c.answer(msg, show_alert=True)
- data=qr_bytes(r.get('qr_string')); text=f'💳 <b>PAYMENT</b>\n\n📦 {qty_i}\n💰 {fmt(amount_i)}\n🏦 {"QR 2" if provider_name=="bayargg" else "QR 1"}\n🧾 <code>{r["invoice_id"]}</code>'
- kb=InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text='🔄 Cek Pembayaran',callback_data=f'paycheck:{r["invoice_id"]}')],[InlineKeyboardButton(text='❌ Batal',callback_data=f'paycancel:{r["invoice_id"]}')]])
- if data: await c.message.answer_photo(BufferedInputFile(data,filename='payment.png'),caption=text,parse_mode='HTML',reply_markup=kb)
- else: await c.message.answer(text,parse_mode='HTML',reply_markup=kb)
+
+ key=(c.from_user.id,typ,qty_i,amount_i,provider_name)
+ async with _PAYMENT_LOCKS[key]:
+  r,status=await create_purchase(c.from_user.id, typ, qty_i, amount_i, provider_name, c.from_user.full_name)
+  if not r:
+   msg = (
+    '❌ Pembayaran sedang ditutup.' if status == 'disabled'
+    else '❌ Nominal QR 2 harus Rp5.000–Rp500.000.' if status == 'invalid_amount'
+    else '❌ Gagal menyimpan transaksi pembayaran. Coba lagi.'
+   )
+   return await c.answer(msg, show_alert=True)
+
+  # If this invoice already has a Telegram payment message, do not send it again.
+  # This is what stops 2x/3x/4x QR messages after rapid repeated taps.
+  if r.get('reused') and r.get('payment_message_id'):
+   await c.answer('ℹ️ QR pembayaran yang sama sudah dikirim. Silakan gunakan QR tersebut.', show_alert=True)
+   try:
+    await c.message.edit_reply_markup(reply_markup=None)
+   except Exception:
+    pass
+   return
+
+  data=qr_bytes(r.get('qr_string')); text=f'💳 <b>PAYMENT</b>\n\n📦 {qty_i}\n💰 {fmt(amount_i)}\n🏦 {"QR 2" if provider_name=="bayargg" else "QR 1"}\n🧾 <code>{r["invoice_id"]}</code>'
+  kb=InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text='🔄 Cek Pembayaran',callback_data=f'paycheck:{r["invoice_id"]}')],[InlineKeyboardButton(text='❌ Batal',callback_data=f'paycancel:{r["invoice_id"]}')]])
+  if data:
+   msg=await c.message.answer_photo(BufferedInputFile(data,filename='payment.png'),caption=text,parse_mode='HTML',reply_markup=kb)
+  else:
+   msg=await c.message.answer(text,parse_mode='HTML',reply_markup=kb)
+  await save_payment_message_id(r['invoice_id'],msg.message_id)
+  try:
+   await c.message.edit_reply_markup(reply_markup=None)
+  except Exception:
+   pass
+  await c.answer('✅ QR pembayaran dikirim. Gunakan QR yang sama sampai pembayaran selesai.')
 
 
 @router.callback_query(F.data.startswith('paycheck:'))
