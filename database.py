@@ -147,6 +147,14 @@ async def init_db():
     ALTER TABLE manual_deposits ADD COLUMN IF NOT EXISTS qr_message_id BIGINT;
     ALTER TABLE manual_deposits ADD COLUMN IF NOT EXISTS proof_message_id BIGINT;
 
+    -- Remove obsolete Supabase objects from older deployments.
+    -- The Telegram bot writes purchases with BIGINT users.user_id directly.
+    -- The legacy trigger calls a UUID/text comparison and aborts every payment
+    -- insert before the QR can be returned. Transaction notifications are
+    -- handled by utils.payments._transaction_post after successful finalization.
+    DROP TRIGGER IF EXISTS trg_notify_purchase ON public.purchases;
+    DROP POLICY IF EXISTS purchases_owner_admin ON public.purchases;
+
     CREATE INDEX IF NOT EXISTS idx_manual_deposits_status ON manual_deposits(status,created_at);
     CREATE INDEX IF NOT EXISTS idx_error_logs_created ON error_logs(created_at DESC);
     CREATE INDEX IF NOT EXISTS idx_code_reactions_code ON code_reactions(code);
