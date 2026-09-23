@@ -127,19 +127,8 @@ async def open_choices(c,code,f):
       parse_mode='HTML',reply_markup=kb)
 
 async def _send_b2(bot, chat_id, item, caption=None):
-    from utils.b2_storage import b2_pool
-    path, _ = await b2_pool.download(int(item['drive_account']), str(item['drive_file_id']))
-    try:
-        from aiogram.types import FSInputFile
-        inp = FSInputFile(path)
-        typ = str(item.get('type') or 'document').lower()
-        if typ == 'photo': return await bot.send_photo(chat_id, inp, caption=caption)
-        if typ == 'video': return await bot.send_video(chat_id, inp, caption=caption)
-        if typ == 'audio': return await bot.send_audio(chat_id, inp, caption=caption)
-        return await bot.send_document(chat_id, inp, caption=caption)
-    finally:
-        try: os.remove(path)
-        except OSError: pass
+    # Keep one canonical media-delivery implementation.
+    return await deliver_one(bot, chat_id, item, caption=caption)
 
 async def _send_telegram_fallback(bot, chat_id, item, caption=None):
     from utils.media_sender import deliver_telegram_file_id
@@ -173,9 +162,12 @@ async def send_page(bot, chat_id, code, media, page, access_expires_at=None, per
                 last_msg = await _send_telegram_fallback(bot, chat_id, item, caption=caption)
                 delivered = True
             except Exception as exc:
-                reason = "Backblaze dan Telegram file_id tidak tersedia"
+                reason = f"Media tidak dapat dikirim: {str(exc)[:300]}"
                 if b2_error:
-                    reason = f"Backblaze gagal; Telegram file_id gagal: {str(exc)[:220]}"
+                    reason = (
+                        f"Backblaze gagal: {str(b2_error)[:140]} | "
+                        f"Telegram file_id gagal: {str(exc)[:160]}"
+                    )
                 missing.append({'index': i, 'reason': reason})
 
         if delivered:
