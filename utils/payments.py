@@ -41,6 +41,29 @@ def _parse_dt(v):
 def _norm_status(v):
     return str(v or "").strip().lower().replace("-","_").replace(" ","_")
 
+def _norm_meta(value):
+    """Normalize json/jsonb metadata from asyncpg and older deployments."""
+    if isinstance(value, dict):
+        return value
+    if isinstance(value, str):
+        try:
+            parsed = json.loads(value) if value.strip() else {}
+            return parsed if isinstance(parsed, dict) else {}
+        except Exception:
+            return {}
+    try:
+        return dict(value) if value else {}
+    except Exception:
+        return {}
+
+async def save_payment_message_id(invoice, message_id):
+    """Persist the Telegram QR/payment message so repeated taps never send another QR."""
+    p = await get_pool()
+    await p.execute(
+        "UPDATE purchases SET metadata = COALESCE(metadata,'{}'::jsonb) || $1::jsonb WHERE invoice_id=$2",
+        json.dumps({"payment_message_id": int(message_id)}), str(invoice)
+    )
+
 async def enabled(provider):
     aliases={"balance_bayargg":"bayargg","balance_cashi":"cashi",
              "payment_bayargg":"bayargg","payment_cashi":"cashi",
@@ -137,18 +160,7 @@ async def create_purchase(uid,typ,qty,amount,provider,name,metadata=None):
         ORDER BY id DESC LIMIT 5
     """,db_uid,typ,provider,amount)
     for old in candidates:
-        oldmeta=old["metadata"] or {}
-        # asyncpg normally decodes jsonb to dict, but older deployments may
-        # have returned/stored the JSON payload as a string. Normalize it
-        # before accessing keys so retry/reuse never crashes.
-        if isinstance(oldmeta, str):
-            try:
-                oldmeta=json.loads(oldmeta) if oldmeta.strip() else {}
-            except Exception:
-                log.warning("Invalid purchase metadata JSON invoice=%s", old.get("invoice_id"))
-                oldmeta={}
-        elif not isinstance(oldmeta, dict):
-            oldmeta=dict(oldmeta) if oldmeta else {}
+        oldmeta=_norm_meta(old["metadata"])
         if metadata.get("code") and str(oldmeta.get("code") or "")!=str(metadata.get("code") or ""):
             continue
         inv=str(old["invoice_id"] or "")
@@ -166,7 +178,9 @@ async def create_purchase(uid,typ,qty,amount,provider,name,metadata=None):
                 log.exception("pending payment recheck failed invoice=%s",inv)
         return {"invoice_id":inv,"qr_string":oldmeta.get("qr_string"),
                 "payment_url":oldmeta.get("payment_url"),"amount":int(oldmeta.get("final_amount") or amount),
-                "expires_at":oldmeta.get("expires_at"),"reused":True},"ok"
+                "expires_at":oldmeta.get("expires_at"),
+                "payment_message_id":oldmeta.get("payment_message_id"),
+                "reused":True},"ok"
 
     order=f"{provider.upper()}-{uuid.uuid4().hex}"
     desc=f"{typ}:{qty}"
@@ -250,7 +264,7 @@ async def finalize_purchase(invoice,status_amount=None):
             if row["status"]!="pending":return False
 
             expected=int(row["amount"] or 0)
-            meta=row["metadata"] or {}
+            meta=_norm_meta(row["metadata"])
             accepted={expected}
             try:
                 if meta.get("final_amount") is not None:accepted.add(int(float(meta["final_amount"])))
