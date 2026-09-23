@@ -148,26 +148,33 @@ async def send_page(bot, chat_id, code, media, page, access_expires_at=None, per
             f"🤖 @{html.escape(BOT_USERNAME)}"
         )
         delivered = False
+        telegram_error = None
         b2_error = None
         last_msg = None
-        try:
-            if item.get('drive_account') is not None and item.get('drive_file_id'):
-                last_msg = await _send_b2(bot, chat_id, item, caption=caption)
-                delivered = True
-        except Exception as exc:
-            b2_error = str(exc)
 
+        # Telegram file_id is the original, already-uploaded Telegram object.
+        # Prefer it first so Star/Points unlocks do not depend on B2 being alive.
+        try:
+            last_msg = await _send_telegram_fallback(bot, chat_id, item, caption=caption)
+            delivered = True
+        except Exception as exc:
+            telegram_error = str(exc)
+
+        # B2 is the secondary source. This also supports old records that may
+        # not contain a Telegram file_id.
         if not delivered:
             try:
-                last_msg = await _send_telegram_fallback(bot, chat_id, item, caption=caption)
-                delivered = True
+                if item.get('drive_account') is not None and item.get('drive_file_id'):
+                    last_msg = await _send_b2(bot, chat_id, item, caption=caption)
+                    delivered = True
+                else:
+                    raise RuntimeError('Backblaze metadata tidak tersedia')
             except Exception as exc:
-                reason = f"Media tidak dapat dikirim: {str(exc)[:300]}"
-                if b2_error:
-                    reason = (
-                        f"Backblaze gagal: {str(b2_error)[:140]} | "
-                        f"Telegram file_id gagal: {str(exc)[:160]}"
-                    )
+                b2_error = str(exc)
+                reason = (
+                    f"Telegram file_id gagal: {str(telegram_error or 'tidak tersedia')[:180]} | "
+                    f"Backblaze gagal: {str(b2_error)[:180]}"
+                )
                 missing.append({'index': i, 'reason': reason})
 
         if delivered:
@@ -242,7 +249,15 @@ async def deliver_page(c,code,page,permanent=False,access_expires_at=None):
     if not f:
         await c.answer('❌ Code tidak ditemukan.',show_alert=True)
         return False
-    media=f['media'] if isinstance(f['media'],list) else json.loads(f['media'] or '[]')
+    try:
+        raw_media = f['media']
+        media = raw_media if isinstance(raw_media, list) else json.loads(raw_media or '[]')
+        if not isinstance(media, list):
+            raise ValueError('media bukan array')
+        media = [x for x in media if isinstance(x, dict)]
+    except Exception as exc:
+        await c.answer(f'❌ Data media rusak: {str(exc)[:120]}', show_alert=True)
+        return False
     total=len(media)
     if page*10 >= total:
         await c.answer('Semua media sudah terkirim.',show_alert=True)
