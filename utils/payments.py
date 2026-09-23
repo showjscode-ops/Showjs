@@ -138,6 +138,17 @@ async def create_purchase(uid,typ,qty,amount,provider,name,metadata=None):
     """,db_uid,typ,provider,amount)
     for old in candidates:
         oldmeta=old["metadata"] or {}
+        # asyncpg normally decodes jsonb to dict, but older deployments may
+        # have returned/stored the JSON payload as a string. Normalize it
+        # before accessing keys so retry/reuse never crashes.
+        if isinstance(oldmeta, str):
+            try:
+                oldmeta=json.loads(oldmeta) if oldmeta.strip() else {}
+            except Exception:
+                log.warning("Invalid purchase metadata JSON invoice=%s", old.get("invoice_id"))
+                oldmeta={}
+        elif not isinstance(oldmeta, dict):
+            oldmeta=dict(oldmeta) if oldmeta else {}
         if metadata.get("code") and str(oldmeta.get("code") or "")!=str(metadata.get("code") or ""):
             continue
         inv=str(old["invoice_id"] or "")
