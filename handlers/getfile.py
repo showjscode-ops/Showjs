@@ -15,6 +15,61 @@ from utils.payments import create_purchase,qr_bytes,enabled
 from handlers.payments import ManualProofState
 router=Router()
 
+async def _insufficient_notice(c, method, cost):
+    """Show a clear insufficient-balance notice with the correct purchase action."""
+    method = str(method or "").lower()
+    uid = c.from_user.id
+    pool = await get_pool()
+    if method == "points":
+        current = await pool.fetchval("SELECT COALESCE(points,0) FROM users WHERE user_id=$1", uid)
+        current = float(current or 0)
+        need = float(cost or 0)
+        label = f"{need:g}"
+        balance = f"{current:g}"
+        text = (
+            "❌ <b>Poin tidak cukup</b>\n\n"
+            f"🪙 Dibutuhkan: <b>{label} Poin</b>\n"
+            f"🪙 Poin kamu: <b>{balance}</b>\n\n"
+            "Silakan beli Poin terlebih dahulu."
+        )
+        kb = InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(text="🛒 Buy Poin", callback_data="buy_points")],
+            [InlineKeyboardButton(text="🔙 Kembali", callback_data="home")]
+        ])
+    elif method == "star":
+        current = await pool.fetchval("SELECT COALESCE(stars,0) FROM users WHERE user_id=$1", uid)
+        current = float(current or 0)
+        need = float(cost or 0)
+        text = (
+            "❌ <b>Star tidak cukup</b>\n\n"
+            f"⭐ Dibutuhkan: <b>{need:g} Star</b>\n"
+            f"⭐ Star kamu: <b>{current:g}</b>\n\n"
+            "Silakan beli Star terlebih dahulu."
+        )
+        kb = InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(text="🛒 Buy Star", callback_data="buy_stars")],
+            [InlineKeyboardButton(text="🔙 Kembali", callback_data="home")]
+        ])
+    else:
+        current = await pool.fetchval("SELECT COALESCE(balance,0) FROM users WHERE user_id=$1", uid)
+        current = int(current or 0)
+        need = int(cost or 0)
+        text = (
+            "❌ <b>Saldo tidak cukup</b>\n\n"
+            f"💰 Dibutuhkan: <b>{fmt(need)}</b>\n"
+            f"💰 Saldo kamu: <b>{fmt(current)}</b>\n\n"
+            "Silakan isi saldo terlebih dahulu."
+        )
+        kb = InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(text="💳 Deposit", callback_data="deposit")],
+            [InlineKeyboardButton(text="🔙 Kembali", callback_data="home")]
+        ])
+    try:
+        await c.answer("❌ Saldo tidak cukup", show_alert=True)
+    except Exception:
+        pass
+    return await c.message.answer(text, parse_mode="HTML", reply_markup=kb)
+
 def fmt(n): return f"Rp{int(n):,}".replace(',','.')
 
 def code_info_kb(code,title='Code'):
