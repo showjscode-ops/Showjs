@@ -52,6 +52,41 @@ async def enabled(provider):
     value=await p.fetchval("SELECT value FROM settings WHERE key=$1",key)
     return str(value or "off").strip().lower() in {"on","1","true","yes","enabled"}
 
+
+async def _resolve_db_user_id(conn, telegram_id):
+    """Resolve a Telegram user id to the native users.user_id type.
+    Some deployed databases use BIGINT while older Supabase schemas use UUID.
+    """
+    cols = await conn.fetch("""
+        SELECT column_name, data_type, udt_name
+        FROM information_schema.columns
+        WHERE table_schema='public' AND table_name='users'
+          AND column_name IN ('user_id','telegram_id')
+    """)
+    names={r['column_name']:r for r in cols}
+    if 'user_id' not in names:
+        raise RuntimeError('users.user_id column is missing')
+    uid_type=str(names['user_id']['udt_name'] or names['user_id']['data_type']).lower()
+    if 'telegram_id' in names:
+        row=await conn.fetchrow("SELECT user_id FROM users WHERE telegram_id::text=$1 LIMIT 1",str(telegram_id))
+        if row: return row['user_id']
+    if uid_type in {'uuid'}:
+        # A UUID cannot be compared directly with Telegram's numeric/text id.
+        row=await conn.fetchrow("SELECT user_id FROM users WHERE user_id::text=$1 LIMIT 1",str(telegram_id))
+        if row: return row['user_id']
+        raise RuntimeError(f'No users row mapped to Telegram ID {telegram_id}')
+    row=await conn.fetchrow("SELECT user_id FROM users WHERE user_id::text=$1 LIMIT 1",str(telegram_id))
+    if row: return row['user_id']
+    return int(telegram_id)
+
+async def _telegram_user_id(conn, db_uid):
+    cols=await conn.fetchval("SELECT COUNT(*) FROM information_schema.columns WHERE table_schema='public' AND table_name='users' AND column_name='telegram_id'")
+    if cols:
+        v=await conn.fetchval("SELECT telegram_id FROM users WHERE user_id=$1",db_uid)
+        if v is not None: return int(v)
+    try: return int(db_uid)
+    except Exception: return str(db_uid)
+
 async def create_purchase(uid,typ,qty,amount,provider,name,metadata=None):
     provider=str(provider).lower().strip()
     amount=int(amount)
@@ -64,7 +99,10 @@ async def create_purchase(uid,typ,qty,amount,provider,name,metadata=None):
         except Exception:pass
 
     metadata=dict(metadata or {})
+    metadata.setdefault("telegram_user_id", int(uid))
     p=await get_pool()
+    async with p.acquire() as conn:
+        db_uid=await _resolve_db_user_id(conn, uid)
 
     # Reuse a still-pending invoice. This prevents duplicate provider orders
     # when the user taps Buy/Cek repeatedly.
@@ -73,7 +111,7 @@ async def create_purchase(uid,typ,qty,amount,provider,name,metadata=None):
         WHERE user_id=$1 AND purchase_type=$2 AND provider=$3 AND amount=$4
           AND status='pending'
         ORDER BY id DESC LIMIT 5
-    """,uid,typ,provider,amount)
+    """,db_uid,typ,provider,amount)
     for old in candidates:
         oldmeta=old["metadata"] or {}
         if metadata.get("code") and str(oldmeta.get("code") or "")!=str(metadata.get("code") or ""):
@@ -164,7 +202,8 @@ async def finalize_purchase(invoice,status_amount=None):
                     log.error("PAYMENT AMOUNT MISMATCH invoice=%s expected=%s actual=%s accepted=%s",invoice,expected,actual,accepted)
                     return False
 
-            typ=row["purchase_type"]; uid=int(row["user_id"]); qty=row["quantity"]
+            typ=row["purchase_type"]; db_uid=row["user_id"]; qty=row["quantity"]
+            uid=await _telegram_user_id(c, db_uid)
             # Validate file before changing status so a bad code cannot create
             # a paid-but-undelivered transaction.
             file_row=None
@@ -178,9 +217,9 @@ async def finalize_purchase(invoice,status_amount=None):
             await c.execute("UPDATE purchases SET status='paid',paid_at=NOW() WHERE id=$1 AND status='pending'",row["id"])
 
             if typ=="points":
-                await c.execute("UPDATE users SET points=points+$1 WHERE user_id=$2",qty,uid)
+                await c.execute("UPDATE users SET points=points+$1 WHERE user_id=$2",qty,db_uid)
             elif typ=="stars":
-                await c.execute("UPDATE users SET stars=stars+$1 WHERE user_id=$2",qty,uid)
+                await c.execute("UPDATE users SET stars=stars+$1 WHERE user_id=$2",qty,db_uid)
             elif typ=="vip":
                 days=int(qty)
                 await c.execute("""
@@ -192,25 +231,25 @@ async def finalize_purchase(invoice,status_amount=None):
                         WHEN $1=7 THEN 7 WHEN $1=10 THEN 10 WHEN $1=15 THEN 15
                         WHEN $1=30 THEN 30 ELSE GREATEST($1,2) END
                     WHERE user_id=$2
-                """,days,uid)
+                """,days,db_uid)
             elif typ=="creator":
-                await c.execute("UPDATE users SET creator_status=CASE WHEN creator_status='approved' THEN creator_status ELSE 'pending' END WHERE user_id=$1",uid)
+                await c.execute("UPDATE users SET creator_status=CASE WHEN creator_status='approved' THEN creator_status ELSE 'pending' END WHERE user_id=$1",db_uid)
             elif typ=="deposit":
-                await c.execute("UPDATE users SET balance=balance+$1 WHERE user_id=$2",expected,uid)
+                await c.execute("UPDATE users SET balance=balance+$1 WHERE user_id=$2",expected,db_uid)
             elif typ=="file":
                 code=str(meta.get("code") or "")
                 creator_id=int(file_row["owner_id"])
                 price=int(file_row["price_idr"] or expected)
                 income=(price*70)//100
                 await c.execute("UPDATE files SET views=views+1 WHERE code=$1",code)
-                await c.execute("UPDATE users SET total_unlocks=total_unlocks+1 WHERE user_id=$1",uid)
+                await c.execute("UPDATE users SET total_unlocks=total_unlocks+1 WHERE user_id=$1",db_uid)
                 if creator_id!=uid and income>0:
                     await c.execute("UPDATE users SET earnings=earnings+$1,total_sales=total_sales+1,points=points+1 WHERE user_id=$2",income,creator_id)
                 await c.execute("""
                     INSERT INTO unlock_transactions(
                         user_id,creator_id,code,payment_type,amount,creator_reward_points,creator_income_idr,expires_at
                     ) VALUES($1,$2,$3,'qr',$4,1,$5,NOW()+INTERVAL '24 hours')
-                """,uid,creator_id,code,price,income)
+                """,db_uid,creator_id,code,price,income)
 
     try:
         from bot import bot
@@ -218,7 +257,7 @@ async def finalize_purchase(invoice,status_amount=None):
         if typ=="file":
             await bot.send_message(uid,f'✅ <b>Payment successful</b>\n\n🔑 Code: <code>{meta.get("code")}</code>\n📥 Pembayaran berhasil dan akses code sudah aktif.',parse_mode="HTML")
         elif typ=="deposit":
-            bal=await p.fetchval("SELECT balance FROM users WHERE user_id=$1",uid)
+            bal=await p.fetchval("SELECT balance FROM users WHERE user_id=$1",db_uid)
             await bot.send_message(uid,f'✅ Deposit berhasil.\n💰 Saldo sekarang: <b>Rp{int(bal or 0):,}</b>'.replace(",","."),parse_mode="HTML")
         elif typ=="vip":
             await bot.send_message(uid,f'💎 <b>VIP berhasil diaktifkan!</b>\nDurasi: <b>{int(qty)} hari</b>.',parse_mode="HTML")
