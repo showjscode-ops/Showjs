@@ -158,7 +158,7 @@ async def create_purchase(uid,typ,qty,amount,provider,name,metadata=None):
         )
         VALUES($1,$2,$3,$4,$5,$6,$7,$8::jsonb,$9)
         ON CONFLICT(invoice_id) DO NOTHING
-    """,uid,typ,qty,amount,provider,order,r["invoice_id"],json.dumps(metadata, default=str),_parse_dt(r.get("expires_at")))
+    """,db_uid,typ,qty,amount,provider,order,r["invoice_id"],json.dumps(metadata, default=str),_parse_dt(r.get("expires_at")))
     return r,"ok"
 
 async def _transaction_post(bot,typ,uid,qty,amount,provider,meta=None):
