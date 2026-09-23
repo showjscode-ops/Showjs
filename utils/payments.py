@@ -2,6 +2,7 @@ import uuid,base64,binascii,json,logging
 from io import BytesIO
 from decimal import Decimal
 from datetime import datetime, timezone
+from uuid import UUID
 import qrcode
 from database import get_pool
 from config import BAYARGG_WEBHOOK_URL
@@ -79,10 +80,32 @@ async def _resolve_db_user_id(conn, telegram_id):
     if row: return row['user_id']
     return int(telegram_id)
 
+async def _coerce_native_user_id(conn, db_uid):
+    """Return the user id in the exact Python type expected by the DB columns.
+    This avoids asyncpg binding a UUID column with a plain text value.
+    """
+    row = await conn.fetchrow("""
+        SELECT
+          (SELECT udt_name FROM information_schema.columns WHERE table_schema='public' AND table_name='users' AND column_name='user_id') AS users_type,
+          (SELECT udt_name FROM information_schema.columns WHERE table_schema='public' AND table_name='purchases' AND column_name='user_id') AS purchases_type
+    """)
+    target = str((row['purchases_type'] if row else None) or (row['users_type'] if row else None) or '').lower()
+    if target == 'uuid':
+        if isinstance(db_uid, UUID):
+            return db_uid
+        try:
+            return UUID(str(db_uid))
+        except Exception as e:
+            raise RuntimeError(f'Invalid UUID user_id: {db_uid!r}') from e
+    if target in {'int8','int4','int2'}:
+        return int(db_uid)
+    return db_uid
+
 async def _telegram_user_id(conn, db_uid):
     cols=await conn.fetchval("SELECT COUNT(*) FROM information_schema.columns WHERE table_schema='public' AND table_name='users' AND column_name='telegram_id'")
     if cols:
-        v=await conn.fetchval("SELECT telegram_id FROM users WHERE user_id=$1",db_uid)
+        # Cast the DB column to text so this remains safe for UUID and BIGINT user_id schemas.
+        v=await conn.fetchval("SELECT telegram_id FROM users WHERE user_id::text=$1 LIMIT 1",str(db_uid))
         if v is not None: return int(v)
     try: return int(db_uid)
     except Exception: return str(db_uid)
@@ -103,6 +126,7 @@ async def create_purchase(uid,typ,qty,amount,provider,name,metadata=None):
     p=await get_pool()
     async with p.acquire() as conn:
         db_uid=await _resolve_db_user_id(conn, uid)
+        db_uid=await _coerce_native_user_id(conn, db_uid)
 
     # Reuse a still-pending invoice. This prevents duplicate provider orders
     # when the user taps Buy/Cek repeatedly.
@@ -203,6 +227,7 @@ async def finalize_purchase(invoice,status_amount=None):
                     return False
 
             typ=row["purchase_type"]; db_uid=row["user_id"]; qty=row["quantity"]
+            db_uid=await _coerce_native_user_id(c, db_uid)
             uid=await _telegram_user_id(c, db_uid)
             # Validate file before changing status so a bad code cannot create
             # a paid-but-undelivered transaction.
