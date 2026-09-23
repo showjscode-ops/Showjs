@@ -176,13 +176,42 @@ async def create_purchase(uid,typ,qty,amount,provider,name,metadata=None):
         "final_amount":r.get("final_amount") or r.get("amount") or amount,
         "expires_at":(_parse_dt(r.get("expires_at")).isoformat() if _parse_dt(r.get("expires_at")) else None),
     })
-    await p.execute("""
-        INSERT INTO purchases(
-            user_id,purchase_type,quantity,amount,provider,order_id,invoice_id,metadata,expires_at
-        )
-        VALUES($1,$2,$3,$4,$5,$6,$7,$8::jsonb,$9)
-        ON CONFLICT(invoice_id) DO NOTHING
-    """,db_uid,typ,qty,amount,provider,order,r["invoice_id"],json.dumps(metadata, default=str),_parse_dt(r.get("expires_at")))
+    try:
+        await p.execute("""
+            INSERT INTO purchases(
+                user_id,purchase_type,quantity,amount,provider,order_id,invoice_id,metadata,expires_at
+            )
+            VALUES($1::BIGINT,$2,$3,$4,$5,$6,$7,$8::jsonb,$9)
+            ON CONFLICT(invoice_id) DO NOTHING
+        """,int(db_uid),typ,qty,amount,provider,order,r["invoice_id"],json.dumps(metadata, default=str),_parse_dt(r.get("expires_at")))
+    except Exception:
+        # Some older Supabase deployments have an obsolete trigger/RLS policy
+        # on purchases that compares auth.uid() (UUID) with a text user id.
+        # The bot schema uses BIGINT Telegram IDs. Log the exact DB-side object
+        # so the deployment can identify it instead of silently creating orphan
+        # gateway invoices.
+        try:
+            diag = await p.fetch("""
+                SELECT 'trigger' AS kind, c.relname AS table_name,
+                       t.tgname AS object_name,
+                       pg_get_triggerdef(t.oid) AS definition
+                FROM pg_trigger t
+                JOIN pg_class c ON c.oid=t.tgrelid
+                WHERE c.relname='purchases' AND NOT t.tgisinternal
+                UNION ALL
+                SELECT 'policy', schemaname||'.'||tablename, policyname,
+                       coalesce(qual,'')||' | WITH CHECK: '||coalesce(with_check,'')
+                FROM pg_policies
+                WHERE schemaname='public' AND tablename='purchases'
+            """)
+            for d in diag:
+                log.error("PURCHASE DB OBJECT | kind=%s table=%s name=%s definition=%s",
+                          d["kind"], d["table_name"], d["object_name"], d["definition"])
+        except Exception:
+            log.exception("purchase DB diagnostic failed")
+        log.exception("PURCHASE INSERT FAILED | db_uid=%r type=%s provider=%s invoice=%s",
+                      db_uid, typ, provider, r.get("invoice_id"))
+        return None,"db_error"
     return r,"ok"
 
 async def _transaction_post(bot,typ,uid,qty,amount,provider,meta=None):
