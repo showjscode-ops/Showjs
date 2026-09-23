@@ -138,6 +138,8 @@ async def unlock(uid,code,media_count,method):
                 ORDER BY expires_at DESC LIMIT 1
             """,uid,code)
             if active:
+                # Existing Star/Points/Balance access is still valid.
+                # Do not charge again; the caller will proceed directly to delivery.
                 return True,Decimal(str(user["points"] or 0)), "active", 0
 
             price=Decimal(str(f["price_idr"] or 0))
