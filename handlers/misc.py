@@ -7,6 +7,7 @@ import re
 from decimal import Decimal
 from database import get_pool
 from utils.economy import checkin
+from utils.i18n import get_lang
 from config import CODE_GROUP_ID, CODE_GROUP_URL, NOTICE_CHANNEL_URL, CODE_GROUP_TITLE, NOTIF_CHANNEL_ID, BOT_USERNAME, CREATOR_ADMIN_ID, ALL_CODE_CHANNEL_URL, BACKUP_CHANNEL_URL
 
 from utils.callback_loading import loading
@@ -16,9 +17,98 @@ class TransferState(StatesGroup):
     username = State()
     amount = State()
 
-def _buy_balance_kb(kind: str):
+
+def _lang(uid: int) -> str:
+    try:
+        return get_lang(uid) or "id"
+    except Exception:
+        return "id"
+
+UI_TEXT = {
+    "id": {
+        "join_creator":"👑 Join Kreator", "pay_creator":"💳 Bayar Pendaftaran Rp200.000", "back":"🔙 Kembali",
+        "creator_title":"👑 <b>PROGRAM KREATOR</b>", "creator_desc":"Jadilah kreator dan buat CODE berbayar dari media kamu.",
+        "creator_req":"📋 <b>Persyaratan & skema pengembalian:</b>", "period":"• Periode evaluasi: 1 bulan sejak pendaftaran.",
+        "target":"• Jika berhasil menarik <b>{n} member</b>: pengembalian/komisi pendaftaran <b>{p}%</b>.",
+        "target_last":"• Jika target belum tercapai dalam periode tersebut, kamu dapat menghubungi admin untuk meminta/menanyakan persyaratan dan periode berikutnya.",
+        "note":"⚠️ <b>Catatan:</b> target dan pengembalian mengikuti verifikasi admin.",
+        "creator_contact":_t(c.from_user.id,"creator_contact"),
+        "checkin_done":"Sudah check-in hari ini.", "checkin_reward":"+{x} Poin", "checkin":"🎁 <b>CHECK IN</b>\n\n📅 Hari: <b>{day}/7</b>\n🪙 Saldo Poin: <b>{bal:g}</b>\n\nHari 1-6 = 0.1 Poin\nHari 7 = 1 Poin.",
+        "mycode":"📋 <b>MY CODE</b>\n\n", "no_code":"Belum ada code.",
+        "top":"🔝 Top 10", "recommend":"⭐ Recommendation", "all":"🔑 All Code", "all_title":"🔑 <b>ALL CODE</b>",
+        "top_title":"🔝 <b>TOP 10 CODE</b>", "rec_title":"⭐ <b>RECOMMENDATION</b>", "no_codes":"Belum ada code yang dibuat.",
+        "click_title":"Klik <b>Judul</b> untuk mencari/membuka media yang terhubung dengan CODE tersebut.",
+        "not_found":"❌ Code tidak ditemukan.", "all_code":"🔙 Semua Code", "like":"👍 Like", "hate":"👎 Hate", "fav":"⭐ Favorit",
+        "buy_vip":"💎 <b>BUY VIP</b>\n\nPilih paket:", "group_channel":"👥 <b>GROUP & CHANNEL CODE</b>\n\nPilih tujuan yang ingin dibuka:",
+        "group":"👥 Group Code","all_channel":"📚 Channel All Code","backup":"💾 Channel Backup","notice":"🔔 Channel Notifikasi",
+        "send_points":"🪙 <b>KIRIM POIN</b>\n\nMasukkan <b>username Telegram penerima</b>.\nContoh: <code>@username</code>",
+        "send_stars":"⭐ <b>KIRIM STAR</b>\n\nMasukkan <b>username Telegram penerima</b>.\nContoh: <code>@username</code>",
+        "invalid_user":"❌ Username tidak valid. Masukkan username seperti <code>@username</code>.",
+        "user_missing":"❌ Username belum ditemukan di bot. Pastikan penerima sudah /start terlebih dahulu.",
+        "self":"❌ Kamu tidak bisa mengirim ke username sendiri.",
+        "send_amount":"Masukkan jumlah {label} yang ingin dikirim:",
+        "invalid_amount":"❌ Nominal tidak valid. Masukkan angka lebih dari 0.",
+        "data_missing":"❌ Data pengguna tidak ditemukan.", "insufficient":"❌ <b>{label} tidak cukup.</b>\n\nSaldo kamu: <b>{balance:g} {label}</b>\nYang dibutuhkan: <b>{amount:g} {label}</b>",
+        "sent":"✅ <b>{label} berhasil dikirim</b>\n\n👤 Penerima: <b>@{username}</b>\n💰 Jumlah: <b>{amount:g} {label}</b>\n💳 Sisa saldo: <b>{balance:g} {label}</b>",
+        "received":"🎁 <b>Kamu menerima {label}</b>\n\n👤 Dari: <b>@{sender}</b>\n💰 Jumlah: <b>{amount:g} {label}</b>",
+        "bot_links":"🔗 <b>LINK BOT</b>\n\nPilih tujuan yang kamu perlukan:", "points_balance":"🪙 <b>Poin kamu sekarang: {bal:g}</b>",
+        "stars_balance":"⭐ <b>Star kamu sekarang: {bal:g}</b>", "buy_points":"🛒 Buy Poin","buy_stars":"🛒 Buy Star","send_points_btn":"📤 Kirim Poin","send_stars_btn":"📤 Kirim Star",
+        "media_hint":"📎 <b>Media terdeteksi</b>\n\nTekan tombol di bawah untuk upload.","upfile":"📤 Up File",
+        "start_first":"Klik /start dulu di bot. Setelah itu kamu bisa menekan GET FILE.","inactive":"Code tidak ditemukan atau sudah tidak aktif.",
+        "detected":"CODE TERDETEKSI\n\nCode: <code>{code}</code>\nMedia: <b>{count}</b>\n\nPilih GET FILE untuk melanjutkan.",
+        "sent_get":"GET FILE dikirim ke chat pribadi.","open_private":"Buka chat pribadi dengan bot lalu klik /start."
+    },
+    "en": {
+        "join_creator":"👑 Join Creator","pay_creator":"💳 Pay Registration Rp200,000","back":"🔙 Back",
+        "creator_title":"👑 <b>CREATOR PROGRAM</b>","creator_desc":"Become a creator and make Paid CODEs from your media.",
+        "creator_req":"📋 <b>Requirements & refund scheme:</b>","period":"• Evaluation period: 1 month from registration.",
+        "target":"• If you attract <b>{n} members</b>: registration refund/commission <b>{p}%</b>.",
+        "target_last":"• If the target is not reached during the period, contact Admin to ask about requirements and the next period.",
+        "note":"⚠️ <b>Note:</b> targets and refunds are subject to Admin verification.",
+        "creator_contact":"Press <b>Join Creator</b> to contact Admin and process registration.",
+        "checkin_done":"You already checked in today.","checkin_reward":"+{x} Points","checkin":"🎁 <b>CHECK IN</b>\n\n📅 Day: <b>{day}/7</b>\n🪙 Point Balance: <b>{bal:g}</b>\n\nDays 1-6 = 0.1 Point\nDay 7 = 1 Point.",
+        "mycode":"📋 <b>MY CODE</b>\n\n","no_code":"No code yet.","top":"🔝 Top 10","recommend":"⭐ Recommendation","all":"🔑 All Code",
+        "all_title":"🔑 <b>ALL CODE</b>","top_title":"🔝 <b>TOP 10 CODE</b>","rec_title":"⭐ <b>RECOMMENDATION</b>","no_codes":"No codes have been created.",
+        "click_title":"Click the <b>Title</b> to find/open media linked to this CODE.","not_found":"❌ Code not found.","all_code":"🔙 All Code","like":"👍 Like","hate":"👎 Hate","fav":"⭐ Favorite",
+        "buy_vip":"💎 <b>BUY VIP</b>\n\nChoose a package:","group_channel":"👥 <b>GROUP & CHANNEL CODE</b>\n\nChoose a destination to open:",
+        "group":"👥 Code Group","all_channel":"📚 All Code Channel","backup":"💾 Backup Channel","notice":"🔔 Notification Channel",
+        "send_points":"🪙 <b>SEND POINTS</b>\n\nEnter the recipient's <b>Telegram username</b>.\nExample: <code>@username</code>","send_stars":"⭐ <b>SEND STAR</b>\n\nEnter the recipient's <b>Telegram username</b>.\nExample: <code>@username</code>",
+        "invalid_user":"❌ Invalid username. Enter a username like <code>@username</code>.","user_missing":"❌ Username was not found. Make sure the recipient has started the bot with /start.","self":"❌ You cannot send to your own username.","send_amount":"Enter the amount of {label} to send:",
+        "invalid_amount":"❌ Invalid amount. Enter a number greater than 0.","data_missing":"❌ User data not found.","insufficient":"❌ <b>Not enough {label}.</b>\n\nYour balance: <b>{balance:g} {label}</b>\nRequired: <b>{amount:g} {label}</b>",
+        "sent":"✅ <b>{label} sent successfully</b>\n\n👤 Recipient: <b>@{username}</b>\n💰 Amount: <b>{amount:g} {label}</b>\n💳 Remaining balance: <b>{balance:g} {label}</b>",
+        "received":"🎁 <b>You received {label}</b>\n\n👤 From: <b>@{sender}</b>\n💰 Amount: <b>{amount:g} {label}</b>",
+        "bot_links":"🔗 <b>BOT LINKS</b>\n\nChoose the destination you need:","points_balance":"🪙 <b>Your current Points: {bal:g}</b>","stars_balance":"⭐ <b>Your current Stars: {bal:g}</b>",
+        "buy_points":"🛒 Buy Points","buy_stars":"🛒 Buy Stars","send_points_btn":"📤 Send Points","send_stars_btn":"📤 Send Stars","media_hint":"📎 <b>Media detected</b>\n\nPress the button below to upload.","upfile":"📤 Up File",
+        "start_first":"Click /start in the bot first. Then you can press GET FILE.","inactive":"Code not found or no longer active.","detected":"CODE DETECTED\n\nCode: <code>{code}</code>\nMedia: <b>{count}</b>\n\nChoose GET FILE to continue.","sent_get":"GET FILE was sent to your private chat.","open_private":"Open the bot's private chat and click /start."
+    },
+    "zh": {
+        "join_creator":"👑 加入创作者","pay_creator":"💳 支付注册费 Rp200.000","back":"🔙 返回",
+        "creator_title":"👑 <b>创作者计划</b>","creator_desc":"成为创作者，用你的媒体创建付费 CODE。",
+        "creator_req":"📋 <b>要求与返还方案：</b>","period":"• 评估期：注册后 1 个月。",
+        "target":"• 如果吸引 <b>{n} 名会员</b>：返还/注册佣金 <b>{p}%</b>。","target_last":"• 如果在期间内未达到目标，可以联系管理员咨询要求和下一阶段。",
+        "note":"⚠️ <b>注意：</b>目标和返还需经过管理员审核。","creator_contact":"点击 <b>加入创作者</b> 联系管理员并进行注册。",
+        "checkin_done":"今天已经签到。","checkin_reward":"+{x} 积分","checkin":"🎁 <b>签到</b>\n\n📅 第 <b>{day}/7</b> 天\n🪙 积分余额：<b>{bal:g}</b>\n\n第1-6天 = 0.1 积分\n第7天 = 1 积分。",
+        "mycode":"📋 <b>我的 CODE</b>\n\n","no_code":"还没有 CODE。","top":"🔝 前10名","recommend":"⭐ 推荐","all":"🔑 全部 CODE",
+        "all_title":"🔑 <b>全部 CODE</b>","top_title":"🔝 <b>热门前10 CODE</b>","rec_title":"⭐ <b>推荐</b>","no_codes":"还没有创建 CODE。",
+        "click_title":"点击<b>标题</b>查找/打开与此 CODE 关联的媒体。","not_found":"❌ 未找到 CODE。","all_code":"🔙 全部 CODE","like":"👍 喜欢","hate":"👎 不喜欢","fav":"⭐ 收藏",
+        "buy_vip":"💎 <b>购买 VIP</b>\n\n请选择套餐：","group_channel":"👥 <b>群组与频道 CODE</b>\n\n请选择要打开的目标：","group":"👥 CODE 群组","all_channel":"📚 全部 CODE 频道","backup":"💾 备份频道","notice":"🔔 通知频道",
+        "send_points":"🪙 <b>发送积分</b>\n\n输入接收者的<b>Telegram 用户名</b>。\n示例：<code>@username</code>","send_stars":"⭐ <b>发送 Star</b>\n\n输入接收者的<b>Telegram 用户名</b>。\n示例：<code>@username</code>",
+        "invalid_user":"❌ 用户名无效。请输入类似 <code>@username</code> 的用户名。","user_missing":"❌ 未找到该用户名。请确认接收者已经 /start。","self":"❌ 不能发送给自己的用户名。","send_amount":"请输入要发送的 {label} 数量：",
+        "invalid_amount":"❌ 数量无效。请输入大于 0 的数字。","data_missing":"❌ 未找到用户数据。","insufficient":"❌ <b>{label} 不足。</b>\n\n你的余额：<b>{balance:g} {label}</b>\n需要：<b>{amount:g} {label}</b>",
+        "sent":"✅ <b>{label} 发送成功</b>\n\n👤 接收者：<b>@{username}</b>\n💰 数量：<b>{amount:g} {label}</b>\n💳 剩余余额：<b>{balance:g} {label}</b>",
+        "received":"🎁 <b>你收到 {label}</b>\n\n👤 来自：<b>@{sender}</b>\n💰 数量：<b>{amount:g} {label}</b>",
+        "bot_links":"🔗 <b>机器人链接</b>\n\n请选择需要的目标：","points_balance":"🪙 <b>当前积分：{bal:g}</b>","stars_balance":"⭐ <b>当前 Star：{bal:g}</b>",
+        "buy_points":"🛒 购买积分","buy_stars":"🛒 购买 Star","send_points_btn":"📤 发送积分","send_stars_btn":"📤 发送 Star","media_hint":"📎 <b>检测到媒体</b>\n\n点击下面按钮上传。","upfile":"📤 上传文件",
+        "start_first":"请先在机器人中点击 /start，然后再点击 GET FILE。","inactive":"CODE 不存在或已停用。","detected":"检测到 CODE\n\nCode：<code>{code}</code>\n媒体：<b>{count}</b>\n\n选择 GET FILE 继续。","sent_get":"GET FILE 已发送到私聊。","open_private":"打开机器人私聊并点击 /start。"
+    }
+}
+def _t(uid, key, **kwargs):
+    lang=_lang(uid)
+    return UI_TEXT.get(lang, UI_TEXT["id"]).get(key, UI_TEXT["id"].get(key, key)).format(**kwargs)
+
+def _buy_balance_kb(kind: str, uid: int = 0):
     return InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text=f"🛒 Buy {'Poin' if kind=='points' else 'Star'}", callback_data='buy_points' if kind=='points' else 'buy_stars')]
+        [InlineKeyboardButton(text=_t(uid, 'buy_points' if kind=='points' else 'buy_stars'), callback_data='buy_points' if kind=='points' else 'buy_stars')]
     ])
 
 
@@ -33,22 +123,22 @@ async def creator_apply(c):
     await loading(c)
     admin_url=f"tg://user?id={int(CREATOR_ADMIN_ID)}" if CREATOR_ADMIN_ID else ""
     text=(
-        "👑 <b>PROGRAM KREATOR</b>\n\n"
-        "Jadilah kreator dan buat CODE berbayar dari media kamu.\n\n"
-        "💰 <b>Biaya pendaftaran: Rp200.000</b>\n\n"
-        "📋 <b>Persyaratan & skema pengembalian:</b>\n"
-        "• Periode evaluasi: 1 bulan sejak pendaftaran.\n"
-        "• Jika berhasil menarik <b>200 member</b>: pengembalian/komisi pendaftaran <b>20%</b>.\n"
-        "• Jika berhasil menarik <b>500 member</b>: pengembalian/komisi pendaftaran <b>50%</b>.\n"
-        "• Jika berhasil menarik <b>1.000 member</b>: pengembalian/komisi pendaftaran <b>100%</b>.\n"
-        "• Jika target belum tercapai dalam periode tersebut, kamu dapat menghubungi admin untuk meminta/menanyakan persyaratan dan periode berikutnya.\n\n"
-        "⚠️ <b>Catatan:</b> target dan pengembalian mengikuti verifikasi admin.\n\n"
-        "Tekan <b>Join Kreator</b> untuk menghubungi admin dan proses pendaftaran."
+        _t(c.from_user.id,"creator_title")+"\n\n"+
+        _t(c.from_user.id,"creator_desc")+"\n\n"+
+        "💰 <b>Rp200.000</b>\n\n"+
+        _t(c.from_user.id,"creator_req")+"\n"+
+        _t(c.from_user.id,"period")+"\n"+
+        _t(c.from_user.id,"target",n="200",p="20")+"\n"+
+        _t(c.from_user.id,"target",n="500",p="50")+"\n"+
+        _t(c.from_user.id,"target",n="1.000",p="100")+"\n"+
+        _t(c.from_user.id,"target_last")+"\n\n"+
+        _t(c.from_user.id,"note")+"\n\n"+
+        _t(c.from_user.id,"creator_contact")
     )
     kb=[]
     if admin_url:
-        kb.append([InlineKeyboardButton(text="👑 Join Kreator",url=admin_url)])
-    kb.append([InlineKeyboardButton(text="💳 Bayar Pendaftaran Rp200.000",callback_data="creator_buy")])
+        kb.append([InlineKeyboardButton(text=_t(c.from_user.id,"join_creator"),url=admin_url)])
+    kb.append([InlineKeyboardButton(text=_t(c.from_user.id,"pay_creator"),callback_data="creator_buy")])
     kb.append([InlineKeyboardButton(text="🔙 Kembali",callback_data="menu_lainnya")])
     await c.message.edit_text(text,parse_mode="HTML",reply_markup=InlineKeyboardMarkup(inline_keyboard=kb))
 
@@ -56,11 +146,11 @@ async def creator_apply(c):
 @router.callback_query(F.data=='checkin')
 async def ci(c):
     bal,day,ok=await checkin(c.from_user.id)
-    await c.answer('Sudah check-in hari ini.' if not ok else f'+{1 if day==7 else 0.1} Poin')
+    await c.answer(_t(c.from_user.id,'checkin_done') if not ok else _t(c.from_user.id,'checkin_reward',x=1 if day==7 else 0.1))
     await c.message.edit_text(
-        f'🎁 <b>CHECK IN</b>\n\n📅 Hari: <b>{day}/7</b>\n🪙 Saldo Poin: <b>{float(bal):g}</b>\n\nHari 1-6 = 0.1 Poin\nHari 7 = 1 Poin.',
+        _t(c.from_user.id,'checkin',day=day,bal=float(bal)),
         parse_mode='HTML',
-        reply_markup=InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text='🔙 Kembali',callback_data='menu_lainnya')]])
+        reply_markup=InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text=_t(uid,'back'),callback_data='menu_lainnya')]])
     )
 
 @router.callback_query(F.data=='my_code')
@@ -69,7 +159,7 @@ async def my(c):
         "SELECT code,title,media_count,views,likes,hates,favorites FROM files "
         "WHERE owner_id=$1 AND active=TRUE ORDER BY id DESC LIMIT 30", c.from_user.id
     )
-    text='📋 <b>MY CODE</b>\n\n'
+    text=_t(c.from_user.id,'mycode')
     kb=[]
     if rows:
         for r in rows:
@@ -78,8 +168,8 @@ async def my(c):
             text += f"👁 {r['views']} • 👍 {r['likes']} • 👎 {r['hates']} • ⭐ {r['favorites']}\n\n"
             kb.append([InlineKeyboardButton(text=f"📝 {title}", callback_data=f"browsecode:{r['code']}")])
     else:
-        text+='Belum ada code.'
-    kb.append([InlineKeyboardButton(text='🔙 Kembali',callback_data='menu_lainnya')])
+        text+=_t(c.from_user.id,'no_code')
+    kb.append([InlineKeyboardButton(text=_t(uid,'back'),callback_data='menu_lainnya')])
     await loading(c)
     await c.message.edit_text(text,parse_mode='HTML',reply_markup=InlineKeyboardMarkup(inline_keyboard=kb))
 
@@ -113,7 +203,7 @@ def _code_text_row(r, prefix=""):
         f"👁 {r['views']} • 👍 {r['likes']} • 👎 {r['hates']} • ⭐ {r['favorites']}\n\n"
     )
 
-def _code_nav(page,total,mode):
+def _code_nav(page,total,mode,uid=0):
     pages=max(1,(total+9)//10)
     nav=[]
     if page>0: nav.append(InlineKeyboardButton(text='⬅️',callback_data=f'{mode}page:{page-1}'))
@@ -122,21 +212,21 @@ def _code_nav(page,total,mode):
     rows=[nav]
     if mode=="all":
         rows.append([
-            InlineKeyboardButton(text='🔝 Top 10',callback_data='top_codes'),
-            InlineKeyboardButton(text='⭐ Recommendation',callback_data='recommendation')
+            InlineKeyboardButton(text=_t(uid,'top'),callback_data='top_codes'),
+            InlineKeyboardButton(text=_t(uid,'recommend'),callback_data='recommendation')
         ])
     elif mode=="top":
-        rows.append([InlineKeyboardButton(text='⭐ Recommendation',callback_data='recommendation'),
-                     InlineKeyboardButton(text='🔑 All Code',callback_data='code_all')])
+        rows.append([InlineKeyboardButton(text=_t(uid,'recommend'),callback_data='recommendation'),
+                     InlineKeyboardButton(text=_t(uid,'all'),callback_data='code_all')])
     else:
-        rows.append([InlineKeyboardButton(text='🔝 Top 10',callback_data='top_codes'),
-                     InlineKeyboardButton(text='🔑 All Code',callback_data='code_all')])
-    rows.append([InlineKeyboardButton(text='🔙 Kembali',callback_data='home')])
+        rows.append([InlineKeyboardButton(text=_t(uid,'top'),callback_data='top_codes'),
+                     InlineKeyboardButton(text=_t(uid,'all'),callback_data='code_all')])
+    rows.append([InlineKeyboardButton(text=_t(uid,'back'),callback_data='home')])
     return InlineKeyboardMarkup(inline_keyboard=rows)
 
 async def _render_code_list(c,page=0,mode="all"):
     rows,total=await _paged_codes(page,mode,10)
-    heading={"all":"🔑 <b>ALL CODE</b>","top":"🔝 <b>TOP 10 CODE</b>","recommend":"⭐ <b>RECOMMENDATION</b>"}[mode]
+    heading={"all":_t(c.from_user.id,"all_title"),"top":_t(c.from_user.id,"top_title"),"recommend":_t(c.from_user.id,"rec_title")}[mode]
     text=heading+"\n\n"
     if not rows:
         text+="Belum ada code yang dibuat."
@@ -144,7 +234,7 @@ async def _render_code_list(c,page=0,mode="all"):
         for i,r in enumerate(rows, page*10+1):
             text+=_code_text_row(r, f"{i}. " if mode!="all" else "")
         text+="Klik <b>Judul</b> untuk mencari/membuka media yang terhubung dengan CODE tersebut."
-    await c.message.edit_text(text,parse_mode='HTML',reply_markup=_code_nav(page,total,mode))
+    await c.message.edit_text(text,parse_mode='HTML',reply_markup=_code_nav(page,total,mode,c.from_user.id))
 
 @router.callback_query(F.data=='code_all')
 async def code_all(c):
@@ -185,7 +275,7 @@ async def browsecode(c):
     code=c.data.split(':',1)[1]
     p=await get_pool()
     f=await p.fetchrow("SELECT code,title,media_count,views,likes,hates,favorites,price_idr FROM files WHERE lower(code)=lower($1) AND active=TRUE", code)
-    if not f: return await c.answer('❌ Code tidak ditemukan.',show_alert=True)
+    if not f: return await c.answer(_t(c.from_user.id,'not_found'),show_alert=True)
     price=int(f['price_idr'] or 0)
     paid=f"💰 Harga: <b>Rp{price:,}</b>".replace(',','.') if price else "🆓 <b>FREE CODE</b>"
     href=html.escape(_code_link(f['code']),quote=True)
@@ -196,10 +286,10 @@ async def browsecode(c):
         "Klik <b>Judul</b> untuk mencari/membuka media yang terhubung dengan CODE tersebut.",
         parse_mode='HTML',
         reply_markup=InlineKeyboardMarkup(inline_keyboard=[
-            [InlineKeyboardButton(text='👍 Like',callback_data=f'react:like:{f["code"]}'),
-             InlineKeyboardButton(text='👎 Hate',callback_data=f'react:hate:{f["code"]}'),
-             InlineKeyboardButton(text='⭐ Favorit',callback_data=f'react:favorite:{f["code"]}')],
-            [InlineKeyboardButton(text='🔙 Semua Code',callback_data='code_all')]
+            [InlineKeyboardButton(text=_t(c.from_user.id,'like'),callback_data=f'react:like:{f["code"]}'),
+             InlineKeyboardButton(text=_t(c.from_user.id,'hate'),callback_data=f'react:hate:{f["code"]}'),
+             InlineKeyboardButton(text=_t(c.from_user.id,'fav'),callback_data=f'react:favorite:{f["code"]}')],
+            [InlineKeyboardButton(text=_t(c.from_user.id,'all_code'),callback_data='code_all')]
         ])
     )
 
@@ -447,7 +537,7 @@ def _help_keyboard(lang: str, page: int):
         InlineKeyboardButton(text='🇨🇳 中文',callback_data='help:lang:zh')
     ])
     rows.append([InlineKeyboardButton(text=f"Page {page+1}/{len(pages)}", callback_data='help:noop')])
-    rows.append([InlineKeyboardButton(text='🔙 Kembali',callback_data='home')])
+    rows.append([InlineKeyboardButton(text=_t(uid,'back'),callback_data='home')])
     return InlineKeyboardMarkup(inline_keyboard=rows)
 
 @router.callback_query(F.data=='help')
@@ -497,14 +587,14 @@ async def help_noop(c):
 async def vip(c):
     rows=await (await get_pool()).fetch("SELECT code,name,price,duration_days FROM vip_packages WHERE active ORDER BY price")
     kb=[[InlineKeyboardButton(text=f'💎 {r["name"]} • Rp{int(r["price"]):,}'.replace(',','.'),callback_data=f'vip:{r["code"]}')] for r in rows]
-    kb.append([InlineKeyboardButton(text='🔙 Kembali',callback_data='home')])
-    await loading(c); await c.message.edit_text('💎 <b>BUY VIP</b>\n\nPilih paket:',parse_mode='HTML',reply_markup=InlineKeyboardMarkup(inline_keyboard=kb))
+    kb.append([InlineKeyboardButton(text=_t(uid,'back'),callback_data='home')])
+    await loading(c); await c.message.edit_text(_t(c.from_user.id,'buy_vip'),parse_mode='HTML',reply_markup=InlineKeyboardMarkup(inline_keyboard=kb))
 
 def quick_links():
     # Group Code opens a dedicated link menu so users can choose the
     # group/all-code/backup/notification destination.
     rows=[]
-    rows.append([InlineKeyboardButton(text='👥 Group Code',callback_data='open_group_info')])
+    rows.append([InlineKeyboardButton(text=_t(c.from_user.id,'group'),callback_data='open_group_info')])
     return rows
 
 @router.callback_query(F.data=='open_group_info')
@@ -512,16 +602,16 @@ async def open_group_info(c):
     await loading(c)
     rows=[]
     if CODE_GROUP_URL:
-        rows.append([InlineKeyboardButton(text='👥 Group Code',url=CODE_GROUP_URL)])
+        rows.append([InlineKeyboardButton(text=_t(c.from_user.id,'group'),url=CODE_GROUP_URL)])
     if ALL_CODE_CHANNEL_URL:
-        rows.append([InlineKeyboardButton(text='📚 Channel All Code',url=ALL_CODE_CHANNEL_URL)])
+        rows.append([InlineKeyboardButton(text=_t(c.from_user.id,'all_channel'),url=ALL_CODE_CHANNEL_URL)])
     if BACKUP_CHANNEL_URL:
-        rows.append([InlineKeyboardButton(text='💾 Channel Backup',url=BACKUP_CHANNEL_URL)])
+        rows.append([InlineKeyboardButton(text=_t(c.from_user.id,'backup'),url=BACKUP_CHANNEL_URL)])
     if NOTICE_CHANNEL_URL:
-        rows.append([InlineKeyboardButton(text='🔔 Channel Notifikasi',url=NOTICE_CHANNEL_URL)])
-    rows.append([InlineKeyboardButton(text='🔙 Kembali',callback_data='menu_lainnya')])
+        rows.append([InlineKeyboardButton(text=_t(c.from_user.id,'notice'),url=NOTICE_CHANNEL_URL)])
+    rows.append([InlineKeyboardButton(text=_t(uid,'back'),callback_data='menu_lainnya')])
     await c.message.edit_text(
-        '👥 <b>GROUP & CHANNEL CODE</b>\n\nPilih tujuan yang ingin dibuka:',
+        _t(c.from_user.id,'group_channel'),
         parse_mode='HTML',
         reply_markup=InlineKeyboardMarkup(inline_keyboard=rows)
     )
@@ -560,15 +650,15 @@ async def send_stars_start(c, state: FSMContext):
 async def transfer_username(m, state: FSMContext):
     username=(m.text or '').strip().lstrip('@').strip()
     if not re.fullmatch(r'[A-Za-z0-9_]{5,32}', username):
-        await m.answer("❌ Username tidak valid. Masukkan username seperti <code>@username</code>.", parse_mode='HTML')
+        await m.answer(_t(m.from_user.id,"invalid_user"), parse_mode='HTML')
         return
     p=await get_pool()
     r=await p.fetchrow("SELECT user_id,username FROM users WHERE lower(username)=lower($1) LIMIT 1", username)
     if not r:
-        await m.answer("❌ Username belum ditemukan di bot. Pastikan penerima sudah /start terlebih dahulu.")
+        await m.answer(_t(m.from_user.id,"user_missing"))
         return
     if int(r['user_id']) == int(m.from_user.id):
-        await m.answer("❌ Kamu tidak bisa mengirim ke username sendiri.")
+        await m.answer(_t(m.from_user.id,"self"))
         return
     data=await state.get_data()
     kind=data.get('kind','points')
@@ -591,7 +681,7 @@ async def transfer_amount(m, state: FSMContext):
     except Exception:
         amount=Decimal('0')
     if amount <= 0 or amount != amount.quantize(Decimal('0.01')):
-        await m.answer("❌ Nominal tidak valid. Masukkan angka lebih dari 0.")
+        await m.answer(_t(m.from_user.id,"invalid_amount"))
         return
     receiver_id=int(data['receiver_id'])
     sender_id=int(m.from_user.id)
@@ -605,7 +695,7 @@ async def transfer_amount(m, state: FSMContext):
             receiver=await conn.fetchrow("SELECT user_id,username FROM users WHERE user_id=$1 FOR UPDATE",receiver_id)
             if not sender or not receiver:
                 await state.clear()
-                await m.answer("❌ Data pengguna tidak ditemukan.")
+                await m.answer(_t(m.from_user.id,"data_missing"))
                 return
             balance=Decimal(str(sender[col] or 0))
             if balance < amount:
@@ -615,7 +705,7 @@ async def transfer_amount(m, state: FSMContext):
                     f"Saldo kamu: <b>{balance:g} {label}</b>\n"
                     f"Yang dibutuhkan: <b>{amount:g} {label}</b>",
                     parse_mode='HTML',
-                    reply_markup=_buy_balance_kb(kind)
+                    reply_markup=_buy_balance_kb(kind,m.from_user.id)
                 )
                 return
             await conn.execute(f"UPDATE users SET {col}={col}-$1 WHERE user_id=$2",amount,sender_id)
@@ -647,28 +737,28 @@ async def keyword_help(m:Message):
     text=(m.text or '').strip().lower()
     if text in {'group','vip','video'}:
         rows=quick_links()
-        await m.answer('🔗 <b>LINK BOT</b>\n\nPilih tujuan yang kamu perlukan:',parse_mode='HTML',
+        await m.answer(_t(m.from_user.id,"bot_links"),parse_mode='HTML',
                        reply_markup=InlineKeyboardMarkup(inline_keyboard=rows or [[InlineKeyboardButton(text='🏠 Menu',callback_data='home')]]))
         return
     if text in {'poin','point','points'}:
         p=await get_pool(); bal=await p.fetchval('SELECT points FROM users WHERE user_id=$1',m.from_user.id) or 0
-        await m.answer(f'🪙 <b>Poin kamu sekarang: {float(bal):g}</b>',parse_mode='HTML',
+        await m.answer(_t(m.from_user.id,'points_balance',bal=float(bal)),parse_mode='HTML',
                        reply_markup=InlineKeyboardMarkup(inline_keyboard=[
-                           [InlineKeyboardButton(text='🛒 Buy Poin',callback_data='buy_points')],
-                           [InlineKeyboardButton(text='📤 Kirim Poin',callback_data='send_points')]
+                           [InlineKeyboardButton(text=_t(m.from_user.id,'buy_points'),callback_data='buy_points')],
+                           [InlineKeyboardButton(text=_t(m.from_user.id,'send_points_btn'),callback_data='send_points')]
                        ]))
         return
     if text in {'star','stars'}:
         p=await get_pool(); bal=await p.fetchval('SELECT stars FROM users WHERE user_id=$1',m.from_user.id) or 0
-        await m.answer(f'⭐ <b>Star kamu sekarang: {float(bal):g}</b>',parse_mode='HTML',
+        await m.answer(_t(m.from_user.id,'stars_balance',bal=float(bal)),parse_mode='HTML',
                        reply_markup=InlineKeyboardMarkup(inline_keyboard=[
-                           [InlineKeyboardButton(text='🛒 Buy Star',callback_data='buy_stars')],
-                           [InlineKeyboardButton(text='📤 Kirim Star',callback_data='send_stars')]
+                           [InlineKeyboardButton(text=_t(m.from_user.id,'buy_stars'),callback_data='buy_stars')],
+                           [InlineKeyboardButton(text=_t(m.from_user.id,'send_stars_btn'),callback_data='send_stars')]
                        ]))
 
 async def media_hint(m:Message):
-    await m.answer('📎 <b>Media terdeteksi</b>\n\nTekan tombol di bawah untuk upload.',parse_mode='HTML',
-                   reply_markup=InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text='📤 Up File',callback_data='upfile')]]))
+    await m.answer(_t(m.from_user.id,'media_hint'),parse_mode='HTML',
+                   reply_markup=InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text=_t(m.from_user.id,'upfile'),callback_data='upfile')]]))
 
 @router.message(F.chat.type == 'private', F.photo)
 async def photo_hint(m): await media_hint(m)
@@ -708,7 +798,7 @@ async def group_get_file(c):
     p=await get_pool()
     started=await p.fetchval("SELECT bot_started_at FROM users WHERE user_id=$1",c.from_user.id)
     if not started:
-        await c.answer("Klik /start dulu di bot. Setelah itu kamu bisa menekan GET FILE.", show_alert=True)
+        await c.answer(_t(c.from_user.id,"start_first"), show_alert=True)
         return
 
     f=await p.fetchrow(
@@ -716,7 +806,7 @@ async def group_get_file(c):
         "WHERE lower(code)=lower($1) AND active=TRUE",code
     )
     if not f:
-        await c.answer("Code tidak ditemukan atau sudah tidak aktif.", show_alert=True)
+        await c.answer(_t(c.from_user.id,"inactive"), show_alert=True)
         return
 
     from handlers.getfile import open_choices
@@ -734,6 +824,6 @@ async def group_get_file(c):
                 [InlineKeyboardButton(text="GET FILE", callback_data=f"getcode:{f['code']}")]
             ])
         )
-        await c.answer("GET FILE dikirim ke chat pribadi.")
+        await c.answer(_t(c.from_user.id,"sent_get"))
     except Exception:
-        await c.answer("Buka chat pribadi dengan bot lalu klik /start.", show_alert=True)
+        await c.answer(_t(c.from_user.id,"open_private"), show_alert=True)
