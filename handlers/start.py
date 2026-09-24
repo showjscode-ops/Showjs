@@ -25,13 +25,50 @@ async def language_prompt(m):
     )
 
 async def dashboard_text(uid):
- p=await get_pool(); r=await p.fetchrow("SELECT points,stars,balance,is_creator,creator_status,vip,vip_until FROM users WHERE user_id=$1",uid)
- creator=bool(r and r['is_creator'] and r['creator_status']=='approved')
- vip=bool(r and r['vip'] and (r['vip_until'] is None or r['vip_until']>__import__('datetime').datetime.now(__import__('datetime').timezone.utc)))
- status='CREATOR' if creator else ('VIP' if vip else 'FREE')
- text = f"👤 <b>Dashboard</b>\n\n🆔 ID: <code>{uid}</code>\n🟢 Status: <b>{status}</b>\n💰 Saldo: <b>Rp{int(r['balance'] or 0):,}</b>\n🪙 Poin: <b>{float(r['points'] or 0):g}</b>\n⭐ Star: <b>{float(r['stars'] or 0):g}</b>\n\n💡 Belum paham cara menggunakan bot? Klik <b>Help</b> untuk melihat panduan lengkap.".replace(',','.')
- lang = await get_lang(uid) or 'id'
- return translate(text, lang),creator
+ p=await get_pool()
+ r=await p.fetchrow(
+  "SELECT points,stars,balance,is_creator,creator_status,vip,vip_until "
+  "FROM users WHERE user_id=$1", uid
+ )
+ creator=bool(r and r["is_creator"] and r["creator_status"]=="approved")
+ vip=bool(r and r["vip"] and (
+     r["vip_until"] is None or
+     r["vip_until"] > __import__("datetime").datetime.now(__import__("datetime").timezone.utc)
+ ))
+ status="CREATOR" if creator else ("VIP" if vip else "FREE")
+ lang=await get_lang(uid) or "id"
+
+ # Translate each fixed UI label separately so dynamic values never prevent
+ # the dashboard from being translated.
+ labels = {
+  "dashboard": {"id":"Dashboard","en":"Dashboard","zh":"控制面板"},
+  "id": {"id":"ID","en":"ID","zh":"ID"},
+  "status": {"id":"Status","en":"Status","zh":"状态"},
+  "balance": {"id":"Saldo","en":"Balance","zh":"余额"},
+  "points": {"id":"Poin","en":"Points","zh":"积分"},
+  "stars": {"id":"Star","en":"Stars","zh":"Star"},
+  "help": {
+   "id":"💡 Belum paham cara menggunakan bot? Klik <b>Help</b> untuk melihat panduan lengkap.",
+   "en":"💡 Need help using the bot? Tap <b>Help</b> to view the complete guide.",
+   "zh":"💡 不清楚如何使用机器人？点击<b>帮助</b>查看完整指南。"
+  }
+ }
+ def L(key):
+  return labels[key].get(lang, labels[key]["id"])
+
+ bal=int((r["balance"] if r else 0) or 0)
+ points=float((r["points"] if r else 0) or 0)
+ stars=float((r["stars"] if r else 0) or 0)
+ status_label={"id":status,"en":status,"zh":{"FREE":"免费","VIP":"VIP","CREATOR":"创作者"}.get(status,status)}[lang]
+ return (
+  f"👤 <b>{L('dashboard')}</b>\\n\\n"
+  f"🆔 {L('id')}: <code>{uid}</code>\\n"
+  f"🟢 {L('status')}: <b>{status_label}</b>\\n"
+  f"💰 {L('balance')}: <b>Rp{bal:,}</b>\\n"
+  f"🪙 {L('points')}: <b>{points:g}</b>\\n"
+  f"⭐ {L('stars')}: <b>{stars:g}</b>\\n\\n"
+  f"{L('help')}"
+ ).replace(",", "."), creator
 
 @router.message(F.chat.type == 'private', CommandStart())
 async def start(m):
@@ -59,7 +96,7 @@ async def start(m):
     f"👁 View: <b>{f['views']}</b> • 👍 <b>{f['likes']}</b> • 👎 <b>{f['hates']}</b> • ⭐ <b>{f['favorites']}</b>",
     parse_mode='HTML',reply_markup=InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text='📥 Buka Code',callback_data=f'getcode:{f["code"]}')]]))
    return
- t,_=await dashboard_text(m.from_user.id); await send_points_help(m); await m.answer(t,parse_mode='HTML',reply_markup=home_kb(await get_lang(m.from_user.id) or "id"))
+ t,_=await dashboard_text(m.from_user.id); await m.answer(t,parse_mode='HTML',reply_markup=home_kb(await get_lang(m.from_user.id) or "id"))
 
 
 @router.callback_query(F.data.startswith("lang:"))
