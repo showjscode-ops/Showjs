@@ -9,6 +9,7 @@ from database import get_pool
 from config import MAX_MEDIA,BOT_USERNAME,PAID_CODE_MIN_IDR,PAID_CODE_MAX_IDR
 from utils.b2_storage import b2_pool
 from utils.callback_loading import loading
+from utils.i18n import get_lang, translate
 from utils.economy import is_creator
 router=Router()
 _LOCKS={}
@@ -320,14 +321,24 @@ async def create_code(m,state,price:int):
 
     await state.clear()
     tagtext=' '.join('#'+html.escape(t) for t in tags) or '-'
-    type_text='paid' if price > 0 else 'free'
+    lang = await get_lang(m.from_user.id) or 'id'
+    labels = {
+        'id': ('Sukses Membuat', 'Judul', 'Tag', 'Tipe', 'Bot', 'media', 'gratis', 'berbayar'),
+        'en': ('Success Create', 'Title', 'Tag', 'Type', 'Bot', 'media', 'free', 'paid'),
+        'zh': ('创建成功', '标题', '标签', '类型', '机器人', '媒体', '免费', '付费'),
+    }
+    success, lbl_title, lbl_tag, lbl_type, lbl_bot, lbl_media, free_txt, paid_txt = labels.get(lang, labels['id'])
+    type_text = paid_txt if price > 0 else free_txt
+    bot_name = str(BOT_USERNAME or '').strip().lstrip('@')
+    bot_text = f'@{html.escape(bot_name)}' if bot_name else '-'
     await m.answer(
-        f'✅ <b>Done Create</b>\n'
-        f'📝 Judul: {html.escape(title)}\n'
-        f'🏷 Tag: {tagtext}\n'
-        f'Type : {type_text}\n'
-        f'🔑 <code>{code}</code>\n'
-        f'📦 {len(media)} media',
+        f'✅ <b>{success}</b>\n'
+        f'📝 {lbl_title}: {html.escape(title)}\n'
+        f'🏷 {lbl_tag}: {tagtext}\n'
+        f'🔑 Code: <code>{html.escape(code)}</code>\n'
+        f'🤖 {lbl_bot}: {bot_text}\n'
+        f'📦 {len(media)} {lbl_media}\n'
+        f'🏷 {lbl_type}: {type_text}',
         parse_mode='HTML')
 
 
