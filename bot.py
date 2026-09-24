@@ -150,7 +150,14 @@ class TrackedBot(Bot):
         chat_id = _CALLBACK_CHAT.get(callback_id)
         if chat_id is not None and "text" in kwargs:
             kwargs["text"] = translate(kwargs["text"], await _out_lang(chat_id))
-        return await super().answer_callback_query(*args, **kwargs)
+        elif chat_id is not None and len(args) >= 2 and args[1]:
+            args = list(args)
+            args[1] = translate(args[1], await _out_lang(chat_id))
+            args = tuple(args)
+        result = await super().answer_callback_query(*args, **kwargs)
+        if callback_id is not None:
+            _CALLBACK_CHAT.pop(callback_id, None)
+        return result
 
     async def edit_message_caption(self, *args, **kwargs):
         chat_id = kwargs.get("chat_id", args[0] if args else None)
@@ -171,6 +178,21 @@ bot = TrackedBot(
 )
 dp = Dispatcher()
 dp.message.middleware(SubscriptionMiddleware())
+
+class _CallbackLanguageMiddleware:
+    async def __call__(self, handler, event, data):
+        try:
+            if getattr(event, "id", None) and getattr(event, "message", None):
+                _CALLBACK_CHAT[event.id] = event.message.chat.id
+                # Keep the map bounded.
+                if len(_CALLBACK_CHAT) > 1000:
+                    for k in list(_CALLBACK_CHAT)[:500]:
+                        _CALLBACK_CHAT.pop(k, None)
+        except Exception:
+            pass
+        return await handler(event, data)
+
+dp.callback_query.middleware(_CallbackLanguageMiddleware())
 dp.callback_query.middleware(SubscriptionMiddleware())
 
 
