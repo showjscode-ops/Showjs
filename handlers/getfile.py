@@ -183,6 +183,7 @@ async def show(m,code):
 
 @router.callback_query(F.data=='getfile')
 async def start(c):
+    lang = await _lang(c.from_user.id)
     await loading(c)
     try:
         await c.message.edit_text(
@@ -400,7 +401,7 @@ async def deliver_page(c,code,page,permanent=False,access_expires_at=None):
             raise ValueError('media bukan array')
         media = [x for x in media if isinstance(x, dict)]
     except Exception as exc:
-        await c.answer(f_L(await _lang(c.from_user.id),'media_corrupt',err=str(exc)[:120]), show_alert=True)
+        await c.answer(_L(await _lang(c.from_user.id),'media_corrupt',err=str(exc)[:120]), show_alert=True)
         return False
     total=len(media)
     if page*10 >= total:
@@ -420,6 +421,7 @@ async def deliver_page(c,code,page,permanent=False,access_expires_at=None):
 
 @router.callback_query(F.data.startswith('continue:'))
 async def continue_delivery(c):
+    lang = await _lang(c.from_user.id)
     await loading(c)
     _,code,pg=c.data.split(':',2)
     f=await get_file(code)
@@ -440,6 +442,7 @@ async def cancel_delivery(c):
         except Exception: pass
 
 async def open_media(c,method):
+    lang = await _lang(c.from_user.id)
     code=c.data.split(':',1)[1]
     f=await get_file(code)
     if not f:return await c.answer('Code tidak ditemukan.',show_alert=True)
@@ -473,6 +476,7 @@ async def open_media(c,method):
 
 @router.callback_query(F.data.startswith('openvip:'))
 async def openvip(c):
+    lang = await _lang(c.from_user.id)
     code=c.data.split(':',1)[1]
     f=await get_file(code)
     if not f:return await c.answer(_L(await _lang(c.from_user.id),'not_found'),show_alert=True)
@@ -501,6 +505,7 @@ async def openvip(c):
 
 @router.callback_query(F.data.startswith('openown:'))
 async def openown(c):
+    lang = await _lang(c.from_user.id)
     code=c.data.split(':',1)[1]
     f=await get_file(code)
     if not f:return await c.answer(_L(await _lang(c.from_user.id),'not_found'),show_alert=True)
@@ -529,6 +534,7 @@ async def openpaid(c):
 
 @router.callback_query(F.data.startswith('openbal:'))
 async def openbal(c):
+    lang = await _lang(c.from_user.id)
     code=c.data.split(':',1)[1]; f=await get_file(code)
     if not f:return await c.answer(_L(await _lang(c.from_user.id),'not_found'),show_alert=True)
     ok,_,reason,cost=await unlock(c.from_user.id,code,int(f['media_count']),'balance')
@@ -542,6 +548,7 @@ async def openbal(c):
 
 @router.callback_query(F.data.startswith('payfile:'))
 async def payfile(c,state):
+    lang = await _lang(c.from_user.id)
     _,requested,code=c.data.split(':',2); f=await get_file(code)
     if not f:return await c.answer('Code tidak ditemukan.',show_alert=True)
     amount=int(f['price_idr'] or 0)
@@ -587,6 +594,7 @@ async def payfile(c,state):
 
 @router.callback_query(F.data.startswith('page:'))
 async def page(c):
+    lang = await _lang(c.from_user.id)
     _,code,pg=c.data.split(':',2)
     await loading(c)
     f=await get_file(code)
