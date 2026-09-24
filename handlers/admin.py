@@ -324,7 +324,7 @@ async def b2health(c):
   try:
    h=await b2_pool.health(a.account_id); lines.append(f"🟢 B2 #{a.account_id} • {h['latency_ms']} ms • {h['bucket']}")
   except Exception as e: lines.append(f"🔴 B2 #{a.account_id} • {str(e)[:80]}")
- await c.message.edit_text('\\n'.join(lines),parse_mode='HTML',reply_markup=InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text='🔙 B2',callback_data='adm:b2')]]))
+ await c.message.edit_text('\n'.join(lines),parse_mode='HTML',reply_markup=InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text='🔙 B2',callback_data='adm:b2')]]))
 
 @router.callback_query(F.data=='b2stats')
 async def b2stats(c):
@@ -335,7 +335,7 @@ async def b2stats(c):
    s=await b2_pool.stats(a.account_id); b=s['bytes']; mb=b/1024**2; gb=b/1024**3
    lines.append(f"🗄 B2 #{a.account_id} • {s['objects']} objects\n   📦 {mb:,.2f} MB • {gb:,.2f} GB")
   except Exception as e: lines.append(f"🔴 B2 #{a.account_id}: {str(e)[:80]}")
- await c.message.edit_text('\\n'.join(lines),parse_mode='HTML',reply_markup=InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text='🔙 B2',callback_data='adm:b2')]]))
+ await c.message.edit_text('\n'.join(lines),parse_mode='HTML',reply_markup=InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text='🔙 B2',callback_data='adm:b2')]]))
 
 @router.message(Command('moveb2'))
 async def moveb2(m):
@@ -359,7 +359,7 @@ async def moveb2(m):
 async def manual(c):
  if not await admin_access(c.from_user.id): return
  rows=await (await get_pool()).fetch("SELECT id,user_id,amount,status FROM manual_deposits WHERE status='pending' ORDER BY id DESC LIMIT 20")
- text='🧾 <b>MANUAL PAYMENTS</b>\\n\\n'+('\\n'.join(f"#{r['id']} • {r['user_id']} • {r['amount']} • {r['status']}" for r in rows) if rows else 'Tidak ada pending.')
+ text='🧾 <b>MANUAL PAYMENTS</b>\n\n'+('\n'.join(f"#{r['id']} • {r['user_id']} • {r['amount']} • {r['status']}" for r in rows) if rows else 'Tidak ada pending.')
  buttons=[]
  for r in rows:
   buttons.append([
@@ -753,7 +753,7 @@ async def editcode(m,state):
  r=await (await get_pool()).fetchrow("SELECT title,tags,price_idr FROM files WHERE code=$1",code)
  if not r:return await m.answer('❌ Code tidak ditemukan.')
  await state.set_state(AdminState.edit_title); await state.update_data(code=code)
- await m.answer(f"📝 Judul sekarang: {r['title'] or '-'}\\nKirim judul baru.")
+ await m.answer(f"📝 Judul sekarang: {r['title'] or '-'}\nKirim judul baru.")
 
 @router.message(Command('deletecode'))
 async def deletecode(m):

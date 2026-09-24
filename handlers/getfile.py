@@ -109,7 +109,22 @@ async def show(m,code):
       parse_mode='HTML',reply_markup=code_info_kb(code,f['title'] or 'Code'))
 
 @router.callback_query(F.data=='getfile')
-async def start(c): await loading(c); await c.message.answer('📥 Kirim CODE yang ingin dibuka.')
+async def start(c):
+    await loading(c)
+    try:
+        await c.message.edit_text(
+            '📥 Kirim CODE yang ingin dibuka.',
+            reply_markup=InlineKeyboardMarkup(inline_keyboard=[
+                [InlineKeyboardButton(text='🔙 Kembali', callback_data='home')]
+            ])
+        )
+    except Exception:
+        await c.message.answer(
+            '📥 Kirim CODE yang ingin dibuka.',
+            reply_markup=InlineKeyboardMarkup(inline_keyboard=[
+                [InlineKeyboardButton(text='🔙 Kembali', callback_data='home')]
+            ])
+        )
 
 # Direct CODE input.
 # Do not hard-code the random part of the code: deployments may use a

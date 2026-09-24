@@ -61,12 +61,12 @@ async def dashboard_text(uid):
  stars=float((r["stars"] if r else 0) or 0)
  status_label={"id":status,"en":status,"zh":{"FREE":"免费","VIP":"VIP","CREATOR":"创作者"}.get(status,status)}[lang]
  return (
-  f"👤 <b>{L('dashboard')}</b>\\n\\n"
-  f"🆔 {L('id')}: <code>{uid}</code>\\n"
-  f"🟢 {L('status')}: <b>{status_label}</b>\\n"
-  f"💰 {L('balance')}: <b>Rp{bal:,}</b>\\n"
-  f"🪙 {L('points')}: <b>{points:g}</b>\\n"
-  f"⭐ {L('stars')}: <b>{stars:g}</b>\\n\\n"
+  f"👤 <b>{L('dashboard')}</b>\n\n"
+  f"🆔 {L('id')}: <code>{uid}</code>\n"
+  f"🟢 {L('status')}: <b>{status_label}</b>\n"
+  f"💰 {L('balance')}: <b>Rp{bal:,}</b>\n"
+  f"🪙 {L('points')}: <b>{points:g}</b>\n"
+  f"⭐ {L('stars')}: <b>{stars:g}</b>\n\n"
   f"{L('help')}"
  ).replace(",", "."), creator
 

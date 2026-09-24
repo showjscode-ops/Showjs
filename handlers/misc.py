@@ -7,7 +7,7 @@ import re
 from decimal import Decimal
 from database import get_pool
 from utils.economy import checkin
-from config import CODE_GROUP_ID, CODE_GROUP_URL, NOTICE_CHANNEL_URL, CODE_GROUP_TITLE, NOTIF_CHANNEL_ID, BOT_USERNAME, CREATOR_ADMIN_ID
+from config import CODE_GROUP_ID, CODE_GROUP_URL, NOTICE_CHANNEL_URL, CODE_GROUP_TITLE, NOTIF_CHANNEL_ID, BOT_USERNAME, CREATOR_ADMIN_ID, ALL_CODE_CHANNEL_URL, BACKUP_CHANNEL_URL
 
 from utils.callback_loading import loading
 router=Router()
@@ -501,24 +501,34 @@ async def vip(c):
     await loading(c); await c.message.edit_text('💎 <b>BUY VIP</b>\n\nPilih paket:',parse_mode='HTML',reply_markup=InlineKeyboardMarkup(inline_keyboard=kb))
 
 def quick_links():
+    # Group Code opens a dedicated link menu so users can choose the
+    # group/all-code/backup/notification destination.
     rows=[]
-    if CODE_GROUP_URL:
-        rows.append([InlineKeyboardButton(text=f'👥 {CODE_GROUP_TITLE}',url=CODE_GROUP_URL)])
-    elif NOTIF_CHANNEL_ID:
-        rows.append([InlineKeyboardButton(text='👥 Group Chat Code',callback_data='open_group_info')])
-    if NOTICE_CHANNEL_URL:
-        rows.append([InlineKeyboardButton(text='🔔 Channel Notifikasi',url=NOTICE_CHANNEL_URL)])
-    elif NOTIF_CHANNEL_ID:
-        rows.append([InlineKeyboardButton(text='🔔 Channel Notifikasi',callback_data='open_notice_info')])
+    rows.append([InlineKeyboardButton(text='👥 Group Code',callback_data='open_group_info')])
     return rows
 
 @router.callback_query(F.data=='open_group_info')
 async def open_group_info(c):
-    await c.answer('Group Chat Code belum dikonfigurasi URL-nya.',show_alert=True)
+    await loading(c)
+    rows=[]
+    if CODE_GROUP_URL:
+        rows.append([InlineKeyboardButton(text='👥 Group Code',url=CODE_GROUP_URL)])
+    if ALL_CODE_CHANNEL_URL:
+        rows.append([InlineKeyboardButton(text='📚 Channel All Code',url=ALL_CODE_CHANNEL_URL)])
+    if BACKUP_CHANNEL_URL:
+        rows.append([InlineKeyboardButton(text='💾 Channel Backup',url=BACKUP_CHANNEL_URL)])
+    if NOTICE_CHANNEL_URL:
+        rows.append([InlineKeyboardButton(text='🔔 Channel Notifikasi',url=NOTICE_CHANNEL_URL)])
+    rows.append([InlineKeyboardButton(text='🔙 Kembali',callback_data='menu_lainnya')])
+    await c.message.edit_text(
+        '👥 <b>GROUP & CHANNEL CODE</b>\n\nPilih tujuan yang ingin dibuka:',
+        parse_mode='HTML',
+        reply_markup=InlineKeyboardMarkup(inline_keyboard=rows)
+    )
 
 @router.callback_query(F.data=='open_notice_info')
 async def open_notice_info(c):
-    await c.answer('Channel Notifikasi belum dikonfigurasi URL-nya.',show_alert=True)
+    await open_group_info(c)
 
 
 @router.callback_query(F.data == 'send_points')

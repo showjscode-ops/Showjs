@@ -36,10 +36,16 @@ def clean_tags(s):
 async def start(c,state):
     await loading(c); await state.clear(); await state.set_state(U.media)
     await state.update_data(media=[],status_message_id=None)
-    msg=await c.message.answer(
-        f'📤 <b>UP FILE</b>\n\nKirim maksimal <b>{MAX_MEDIA}</b> media.\n'
-        'Media sampai 20 MB disimpan ke Backblaze B2. Media di atas 20 MB otomatis memakai Telegram file_id. Setelah selesai tekan <b>✅ Selesai Upload</b>.',
-        parse_mode='HTML',reply_markup=media_kb())
+    try:
+        msg=await c.message.edit_text(
+            f'📤 <b>UP FILE</b>\n\nKirim maksimal <b>{MAX_MEDIA}</b> media.\n'
+            'Media sampai 20 MB disimpan ke Backblaze B2. Media di atas 20 MB otomatis memakai Telegram file_id. Setelah selesai tekan <b>✅ Selesai Upload</b>.',
+            parse_mode='HTML',reply_markup=media_kb())
+    except Exception:
+        msg=await c.message.answer(
+            f'📤 <b>UP FILE</b>\n\nKirim maksimal <b>{MAX_MEDIA}</b> media.\n'
+            'Media sampai 20 MB disimpan ke Backblaze B2. Media di atas 20 MB otomatis memakai Telegram file_id. Setelah selesai tekan <b>✅ Selesai Upload</b>.',
+            parse_mode='HTML',reply_markup=media_kb())
     await state.update_data(status_message_id=msg.message_id)
 
 @router.message(F.chat.type == "private", U.media)
