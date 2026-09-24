@@ -7,7 +7,7 @@ from keyboards.menu import home_kb,other_menu_kb
 from utils.economy import ensure_user,is_creator,is_vip
 from middlewares.subscription import subscription_prompt
 from utils.callback_loading import loading
-from utils.i18n import get_lang,set_lang,SUPPORTED,LANG_KB
+from utils.i18n import get_lang,set_lang,SUPPORTED,LANG_KB,translate
 router=Router()
 
 def language_kb():
@@ -29,7 +29,9 @@ async def dashboard_text(uid):
  creator=bool(r and r['is_creator'] and r['creator_status']=='approved')
  vip=bool(r and r['vip'] and (r['vip_until'] is None or r['vip_until']>__import__('datetime').datetime.now(__import__('datetime').timezone.utc)))
  status='CREATOR' if creator else ('VIP' if vip else 'FREE')
- return f"👤 <b>Dashboard</b>\n\n🆔 ID: <code>{uid}</code>\n🟢 Status: <b>{status}</b>\n💰 Saldo: <b>Rp{int(r['balance'] or 0):,}</b>\n🪙 Poin: <b>{float(r['points'] or 0):g}</b>\n⭐ Star: <b>{float(r['stars'] or 0):g}</b>\n\n💡 Belum paham cara menggunakan bot? Klik <b>Help</b> untuk melihat panduan lengkap.".replace(',','.'),creator
+ text = f"👤 <b>Dashboard</b>\n\n🆔 ID: <code>{uid}</code>\n🟢 Status: <b>{status}</b>\n💰 Saldo: <b>Rp{int(r['balance'] or 0):,}</b>\n🪙 Poin: <b>{float(r['points'] or 0):g}</b>\n⭐ Star: <b>{float(r['stars'] or 0):g}</b>\n\n💡 Belum paham cara menggunakan bot? Klik <b>Help</b> untuk melihat panduan lengkap.".replace(',','.')
+ lang = await get_lang(uid) or 'id'
+ return translate(text, lang),creator
 
 @router.message(F.chat.type == 'private', CommandStart())
 async def start(m):
@@ -57,7 +59,7 @@ async def start(m):
     f"👁 View: <b>{f['views']}</b> • 👍 <b>{f['likes']}</b> • 👎 <b>{f['hates']}</b> • ⭐ <b>{f['favorites']}</b>",
     parse_mode='HTML',reply_markup=InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text='📥 Buka Code',callback_data=f'getcode:{f["code"]}')]]))
    return
- t,_=await dashboard_text(m.from_user.id); await send_points_help(m); await m.answer(t,parse_mode='HTML',reply_markup=home_kb())
+ t,_=await dashboard_text(m.from_user.id); await send_points_help(m); await m.answer(t,parse_mode='HTML',reply_markup=home_kb(await get_lang(m.from_user.id) or "id"))
 
 
 @router.callback_query(F.data.startswith("lang:"))
@@ -79,7 +81,7 @@ async def choose_language(c):
         from handlers.getfile import show
         return await show(c.message,pending)
     t,_=await dashboard_text(c.from_user.id)
-    await c.message.edit_text(t,parse_mode="HTML",reply_markup=home_kb())
+    await c.message.edit_text(t,parse_mode="HTML",reply_markup=home_kb(lang))
 
 @router.callback_query(F.data=="change_language")
 async def change_language(c):
@@ -92,11 +94,11 @@ async def change_language(c):
 @router.callback_query(F.data=='home')
 async def home(c):
  await loading(c); await ensure_user(c.from_user.id,c.from_user.username,c.from_user.full_name); t,_=await dashboard_text(c.from_user.id)
- await c.message.edit_text(t,parse_mode='HTML',reply_markup=home_kb())
+ await c.message.edit_text(t,parse_mode='HTML',reply_markup=home_kb(await get_lang(c.from_user.id) or "id"))
 
 @router.callback_query(F.data=='menu_lainnya')
 async def more(c):
- await loading(c); await c.message.edit_text('📂 <b>MENU LAINNYA</b>',parse_mode='HTML',reply_markup=other_menu_kb(await is_creator(c.from_user.id)))
+ await loading(c); await c.message.edit_text(translate('📂 <b>MENU LAINNYA</b>', await get_lang(c.from_user.id) or 'id'),parse_mode='HTML',reply_markup=other_menu_kb(await is_creator(c.from_user.id), await get_lang(c.from_user.id) or 'id'))
 
 @router.callback_query(F.data=='verify_join')
 async def verify_join(c):
@@ -104,8 +106,8 @@ async def verify_join(c):
  if not await subscription_prompt(c.bot,c.from_user.id,c.from_user.id): return
  await ensure_user(c.from_user.id,c.from_user.username,c.from_user.full_name)
  t,_=await dashboard_text(c.from_user.id)
- try: await c.message.edit_text(t,parse_mode='HTML',reply_markup=home_kb())
- except: await c.message.answer(t,parse_mode='HTML',reply_markup=home_kb())
+ try: await c.message.edit_text(t,parse_mode='HTML',reply_markup=home_kb(await get_lang(c.from_user.id) or "id"))
+ except: await c.message.answer(t,parse_mode='HTML',reply_markup=home_kb(await get_lang(c.from_user.id) or "id"))
 
 POINTS_HELP_TEXT=("💡 <b>Info Dashboard</b>\n\n"
 "• 💰 Saldo untuk paid code dan deposit\n"
@@ -121,4 +123,4 @@ async def points_help_ok(c):
  await c.answer()
 
 async def send_points_help(message):
- return await message.answer(POINTS_HELP_TEXT,reply_markup=InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text="❓ Help",callback_data="help")],[InlineKeyboardButton(text="✅ Done",callback_data="points_help_ok")]]))
+ return await message.answer(translate(POINTS_HELP_TEXT, await get_lang(message.from_user.id) or "id"),reply_markup=InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text=translate("❓ Help", await get_lang(message.from_user.id) or "id"),callback_data="help")],[InlineKeyboardButton(text=translate("✅ Done", await get_lang(message.from_user.id) or "id"),callback_data="points_help_ok")]]))
