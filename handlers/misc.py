@@ -18,9 +18,10 @@ class TransferState(StatesGroup):
     amount = State()
 
 
-def _lang(uid: int) -> str:
+async def _lang(uid: int) -> str:
     try:
-        return get_lang(uid) or "id"
+        lang = await get_lang(uid)
+        return lang if lang in UI_TEXT else "id"
     except Exception:
         return "id"
 
@@ -102,13 +103,13 @@ UI_TEXT = {
         "start_first":"请先在机器人中点击 /start，然后再点击 GET FILE。","inactive":"CODE 不存在或已停用。","detected":"检测到 CODE\n\nCode：<code>{code}</code>\n媒体：<b>{count}</b>\n\n选择 GET FILE 继续。","sent_get":"GET FILE 已发送到私聊。","open_private":"打开机器人私聊并点击 /start。"
     }
 }
-def _t(uid, key, **kwargs):
-    lang=_lang(uid)
+async def _t(uid, key, **kwargs):
+    lang=await _lang(uid)
     return UI_TEXT.get(lang, UI_TEXT["id"]).get(key, UI_TEXT["id"].get(key, key)).format(**kwargs)
 
-def _buy_balance_kb(kind: str, uid: int = 0):
+async def _buy_balance_kb(kind: str, uid: int = 0):
     return InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text=_t(uid, 'buy_points' if kind=='points' else 'buy_stars'), callback_data='buy_points' if kind=='points' else 'buy_stars')]
+        [InlineKeyboardButton(text=await _t(uid, 'buy_points' if kind=='points' else 'buy_stars'), callback_data='buy_points' if kind=='points' else 'buy_stars')]
     ])
 
 
@@ -123,22 +124,22 @@ async def creator_apply(c):
     await loading(c)
     admin_url=f"tg://user?id={int(CREATOR_ADMIN_ID)}" if CREATOR_ADMIN_ID else ""
     text=(
-        _t(c.from_user.id,"creator_title")+"\n\n"+
-        _t(c.from_user.id,"creator_desc")+"\n\n"+
+        await _t(c.from_user.id,"creator_title")+"\n\n"+
+        await _t(c.from_user.id,"creator_desc")+"\n\n"+
         "💰 <b>Rp200.000</b>\n\n"+
-        _t(c.from_user.id,"creator_req")+"\n"+
-        _t(c.from_user.id,"period")+"\n"+
-        _t(c.from_user.id,"target",n="200",p="20")+"\n"+
-        _t(c.from_user.id,"target",n="500",p="50")+"\n"+
-        _t(c.from_user.id,"target",n="1.000",p="100")+"\n"+
-        _t(c.from_user.id,"target_last")+"\n\n"+
-        _t(c.from_user.id,"note")+"\n\n"+
-        _t(c.from_user.id,"creator_contact")
+        await _t(c.from_user.id,"creator_req")+"\n"+
+        await _t(c.from_user.id,"period")+"\n"+
+        await _t(c.from_user.id,"target",n="200",p="20")+"\n"+
+        await _t(c.from_user.id,"target",n="500",p="50")+"\n"+
+        await _t(c.from_user.id,"target",n="1.000",p="100")+"\n"+
+        await _t(c.from_user.id,"target_last")+"\n\n"+
+        await _t(c.from_user.id,"note")+"\n\n"+
+        await _t(c.from_user.id,"creator_contact")
     )
     kb=[]
     if admin_url:
-        kb.append([InlineKeyboardButton(text=_t(c.from_user.id,"join_creator"),url=admin_url)])
-    kb.append([InlineKeyboardButton(text=_t(c.from_user.id,"pay_creator"),callback_data="creator_buy")])
+        kb.append([InlineKeyboardButton(text=await _t(c.from_user.id,"join_creator"),url=admin_url)])
+    kb.append([InlineKeyboardButton(text=await _t(c.from_user.id,"pay_creator"),callback_data="creator_buy")])
     kb.append([InlineKeyboardButton(text="🔙 Kembali",callback_data="menu_lainnya")])
     await c.message.edit_text(text,parse_mode="HTML",reply_markup=InlineKeyboardMarkup(inline_keyboard=kb))
 
@@ -146,11 +147,11 @@ async def creator_apply(c):
 @router.callback_query(F.data=='checkin')
 async def ci(c):
     bal,day,ok=await checkin(c.from_user.id)
-    await c.answer(_t(c.from_user.id,'checkin_done') if not ok else _t(c.from_user.id,'checkin_reward',x=1 if day==7 else 0.1))
+    await c.answer(await _t(c.from_user.id,'checkin_done') if not ok else await _t(c.from_user.id,'checkin_reward',x=1 if day==7 else 0.1))
     await c.message.edit_text(
-        _t(c.from_user.id,'checkin',day=day,bal=float(bal)),
+        await _t(c.from_user.id,'checkin',day=day,bal=float(bal)),
         parse_mode='HTML',
-        reply_markup=InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text=_t(uid,'back'),callback_data='menu_lainnya')]])
+        reply_markup=InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text=await _t(uid,'back'),callback_data='menu_lainnya')]])
     )
 
 @router.callback_query(F.data=='my_code')
@@ -159,7 +160,7 @@ async def my(c):
         "SELECT code,title,media_count,views,likes,hates,favorites FROM files "
         "WHERE owner_id=$1 AND active=TRUE ORDER BY id DESC LIMIT 30", c.from_user.id
     )
-    text=_t(c.from_user.id,'mycode')
+    text=await _t(c.from_user.id,'mycode')
     kb=[]
     if rows:
         for r in rows:
@@ -168,8 +169,8 @@ async def my(c):
             text += f"👁 {r['views']} • 👍 {r['likes']} • 👎 {r['hates']} • ⭐ {r['favorites']}\n\n"
             kb.append([InlineKeyboardButton(text=f"📝 {title}", callback_data=f"browsecode:{r['code']}")])
     else:
-        text+=_t(c.from_user.id,'no_code')
-    kb.append([InlineKeyboardButton(text=_t(uid,'back'),callback_data='menu_lainnya')])
+        text+=await _t(c.from_user.id,'no_code')
+    kb.append([InlineKeyboardButton(text=await _t(uid,'back'),callback_data='menu_lainnya')])
     await loading(c)
     await c.message.edit_text(text,parse_mode='HTML',reply_markup=InlineKeyboardMarkup(inline_keyboard=kb))
 
@@ -203,7 +204,7 @@ def _code_text_row(r, prefix=""):
         f"👁 {r['views']} • 👍 {r['likes']} • 👎 {r['hates']} • ⭐ {r['favorites']}\n\n"
     )
 
-def _code_nav(page,total,mode,uid=0):
+async def _code_nav(page,total,mode,uid=0):
     pages=max(1,(total+9)//10)
     nav=[]
     if page>0: nav.append(InlineKeyboardButton(text='⬅️',callback_data=f'{mode}page:{page-1}'))
@@ -212,21 +213,21 @@ def _code_nav(page,total,mode,uid=0):
     rows=[nav]
     if mode=="all":
         rows.append([
-            InlineKeyboardButton(text=_t(uid,'top'),callback_data='top_codes'),
-            InlineKeyboardButton(text=_t(uid,'recommend'),callback_data='recommendation')
+            InlineKeyboardButton(text=await _t(uid,'top'),callback_data='top_codes'),
+            InlineKeyboardButton(text=await _t(uid,'recommend'),callback_data='recommendation')
         ])
     elif mode=="top":
-        rows.append([InlineKeyboardButton(text=_t(uid,'recommend'),callback_data='recommendation'),
-                     InlineKeyboardButton(text=_t(uid,'all'),callback_data='code_all')])
+        rows.append([InlineKeyboardButton(text=await _t(uid,'recommend'),callback_data='recommendation'),
+                     InlineKeyboardButton(text=await _t(uid,'all'),callback_data='code_all')])
     else:
-        rows.append([InlineKeyboardButton(text=_t(uid,'top'),callback_data='top_codes'),
-                     InlineKeyboardButton(text=_t(uid,'all'),callback_data='code_all')])
-    rows.append([InlineKeyboardButton(text=_t(uid,'back'),callback_data='home')])
+        rows.append([InlineKeyboardButton(text=await _t(uid,'top'),callback_data='top_codes'),
+                     InlineKeyboardButton(text=await _t(uid,'all'),callback_data='code_all')])
+    rows.append([InlineKeyboardButton(text=await _t(c.from_user.id,'back'),callback_data='home')])
     return InlineKeyboardMarkup(inline_keyboard=rows)
 
 async def _render_code_list(c,page=0,mode="all"):
     rows,total=await _paged_codes(page,mode,10)
-    heading={"all":_t(c.from_user.id,"all_title"),"top":_t(c.from_user.id,"top_title"),"recommend":_t(c.from_user.id,"rec_title")}[mode]
+    heading={"all":await _t(c.from_user.id,"all_title"),"top":await _t(c.from_user.id,"top_title"),"recommend":await _t(c.from_user.id,"rec_title")}[mode]
     text=heading+"\n\n"
     if not rows:
         text+="Belum ada code yang dibuat."
@@ -234,7 +235,7 @@ async def _render_code_list(c,page=0,mode="all"):
         for i,r in enumerate(rows, page*10+1):
             text+=_code_text_row(r, f"{i}. " if mode!="all" else "")
         text+="Klik <b>Judul</b> untuk mencari/membuka media yang terhubung dengan CODE tersebut."
-    await c.message.edit_text(text,parse_mode='HTML',reply_markup=_code_nav(page,total,mode,c.from_user.id))
+    await c.message.edit_text(text,parse_mode='HTML',reply_markup=await _code_nav(page,total,mode,c.from_user.id))
 
 @router.callback_query(F.data=='code_all')
 async def code_all(c):
@@ -275,7 +276,7 @@ async def browsecode(c):
     code=c.data.split(':',1)[1]
     p=await get_pool()
     f=await p.fetchrow("SELECT code,title,media_count,views,likes,hates,favorites,price_idr FROM files WHERE lower(code)=lower($1) AND active=TRUE", code)
-    if not f: return await c.answer(_t(c.from_user.id,'not_found'),show_alert=True)
+    if not f: return await c.answer(await _t(c.from_user.id,'not_found'),show_alert=True)
     price=int(f['price_idr'] or 0)
     paid=f"💰 Harga: <b>Rp{price:,}</b>".replace(',','.') if price else "🆓 <b>FREE CODE</b>"
     href=html.escape(_code_link(f['code']),quote=True)
@@ -286,10 +287,10 @@ async def browsecode(c):
         "Klik <b>Judul</b> untuk mencari/membuka media yang terhubung dengan CODE tersebut.",
         parse_mode='HTML',
         reply_markup=InlineKeyboardMarkup(inline_keyboard=[
-            [InlineKeyboardButton(text=_t(c.from_user.id,'like'),callback_data=f'react:like:{f["code"]}'),
-             InlineKeyboardButton(text=_t(c.from_user.id,'hate'),callback_data=f'react:hate:{f["code"]}'),
-             InlineKeyboardButton(text=_t(c.from_user.id,'fav'),callback_data=f'react:favorite:{f["code"]}')],
-            [InlineKeyboardButton(text=_t(c.from_user.id,'all_code'),callback_data='code_all')]
+            [InlineKeyboardButton(text=await _t(c.from_user.id,'like'),callback_data=f'react:like:{f["code"]}'),
+             InlineKeyboardButton(text=await _t(c.from_user.id,'hate'),callback_data=f'react:hate:{f["code"]}'),
+             InlineKeyboardButton(text=await _t(c.from_user.id,'fav'),callback_data=f'react:favorite:{f["code"]}')],
+            [InlineKeyboardButton(text=await _t(c.from_user.id,'all_code'),callback_data='code_all')]
         ])
     )
 
@@ -521,7 +522,7 @@ def _help_pages(lang: str):
         pages.append(current)
     return pages or [""]
 
-def _help_keyboard(lang: str, page: int):
+async def _help_keyboard(lang: str, page: int):
     pages = _help_pages(lang)
     rows = []
     nav = []
@@ -537,7 +538,7 @@ def _help_keyboard(lang: str, page: int):
         InlineKeyboardButton(text='🇨🇳 中文',callback_data='help:lang:zh')
     ])
     rows.append([InlineKeyboardButton(text=f"Page {page+1}/{len(pages)}", callback_data='help:noop')])
-    rows.append([InlineKeyboardButton(text=_t(uid,'back'),callback_data='home')])
+    rows.append([InlineKeyboardButton(text=await _t(c.from_user.id,'back'),callback_data='home')])
     return InlineKeyboardMarkup(inline_keyboard=rows)
 
 @router.callback_query(F.data=='help')
@@ -546,7 +547,7 @@ async def help_(c):
     await c.message.edit_text(
         _help_pages("id")[0],
         parse_mode='HTML',
-        reply_markup=_help_keyboard("id", 0)
+        reply_markup=await _help_keyboard("id", 0)
     )
 
 @router.callback_query(F.data.startswith('help:lang:'))
@@ -557,7 +558,7 @@ async def help_lang(c):
     await c.message.edit_text(
         _help_pages(lang)[0],
         parse_mode='HTML',
-        reply_markup=_help_keyboard(lang, 0)
+        reply_markup=await _help_keyboard(lang, 0)
     )
 
 @router.callback_query(F.data.startswith('help:page:'))
@@ -576,7 +577,7 @@ async def help_page(c):
     await c.message.edit_text(
         pages[page],
         parse_mode='HTML',
-        reply_markup=_help_keyboard(lang, page)
+        reply_markup=await _help_keyboard(lang, page)
     )
 
 @router.callback_query(F.data=='help:noop')
@@ -587,14 +588,14 @@ async def help_noop(c):
 async def vip(c):
     rows=await (await get_pool()).fetch("SELECT code,name,price,duration_days FROM vip_packages WHERE active ORDER BY price")
     kb=[[InlineKeyboardButton(text=f'💎 {r["name"]} • Rp{int(r["price"]):,}'.replace(',','.'),callback_data=f'vip:{r["code"]}')] for r in rows]
-    kb.append([InlineKeyboardButton(text=_t(uid,'back'),callback_data='home')])
-    await loading(c); await c.message.edit_text(_t(c.from_user.id,'buy_vip'),parse_mode='HTML',reply_markup=InlineKeyboardMarkup(inline_keyboard=kb))
+    kb.append([InlineKeyboardButton(text=await _t(c.from_user.id,'back'),callback_data='home')])
+    await loading(c); await c.message.edit_text(await _t(c.from_user.id,'buy_vip'),parse_mode='HTML',reply_markup=InlineKeyboardMarkup(inline_keyboard=kb))
 
-def quick_links():
+async def quick_links():
     # Group Code opens a dedicated link menu so users can choose the
     # group/all-code/backup/notification destination.
     rows=[]
-    rows.append([InlineKeyboardButton(text=_t(c.from_user.id,'group'),callback_data='open_group_info')])
+    rows.append([InlineKeyboardButton(text=await _t(c.from_user.id,'group'),callback_data='open_group_info')])
     return rows
 
 @router.callback_query(F.data=='open_group_info')
@@ -602,16 +603,16 @@ async def open_group_info(c):
     await loading(c)
     rows=[]
     if CODE_GROUP_URL:
-        rows.append([InlineKeyboardButton(text=_t(c.from_user.id,'group'),url=CODE_GROUP_URL)])
+        rows.append([InlineKeyboardButton(text=await _t(c.from_user.id,'group'),url=CODE_GROUP_URL)])
     if ALL_CODE_CHANNEL_URL:
-        rows.append([InlineKeyboardButton(text=_t(c.from_user.id,'all_channel'),url=ALL_CODE_CHANNEL_URL)])
+        rows.append([InlineKeyboardButton(text=await _t(c.from_user.id,'all_channel'),url=ALL_CODE_CHANNEL_URL)])
     if BACKUP_CHANNEL_URL:
-        rows.append([InlineKeyboardButton(text=_t(c.from_user.id,'backup'),url=BACKUP_CHANNEL_URL)])
+        rows.append([InlineKeyboardButton(text=await _t(c.from_user.id,'backup'),url=BACKUP_CHANNEL_URL)])
     if NOTICE_CHANNEL_URL:
-        rows.append([InlineKeyboardButton(text=_t(c.from_user.id,'notice'),url=NOTICE_CHANNEL_URL)])
-    rows.append([InlineKeyboardButton(text=_t(uid,'back'),callback_data='menu_lainnya')])
+        rows.append([InlineKeyboardButton(text=await _t(c.from_user.id,'notice'),url=NOTICE_CHANNEL_URL)])
+    rows.append([InlineKeyboardButton(text=await _t(c.from_user.id,'back'),callback_data='menu_lainnya')])
     await c.message.edit_text(
-        _t(c.from_user.id,'group_channel'),
+        await _t(c.from_user.id,'group_channel'),
         parse_mode='HTML',
         reply_markup=InlineKeyboardMarkup(inline_keyboard=rows)
     )
@@ -650,15 +651,15 @@ async def send_stars_start(c, state: FSMContext):
 async def transfer_username(m, state: FSMContext):
     username=(m.text or '').strip().lstrip('@').strip()
     if not re.fullmatch(r'[A-Za-z0-9_]{5,32}', username):
-        await m.answer(_t(m.from_user.id,"invalid_user"), parse_mode='HTML')
+        await m.answer(await _t(m.from_user.id,"invalid_user"), parse_mode='HTML')
         return
     p=await get_pool()
     r=await p.fetchrow("SELECT user_id,username FROM users WHERE lower(username)=lower($1) LIMIT 1", username)
     if not r:
-        await m.answer(_t(m.from_user.id,"user_missing"))
+        await m.answer(await _t(m.from_user.id,"user_missing"))
         return
     if int(r['user_id']) == int(m.from_user.id):
-        await m.answer(_t(m.from_user.id,"self"))
+        await m.answer(await _t(m.from_user.id,"self"))
         return
     data=await state.get_data()
     kind=data.get('kind','points')
@@ -681,7 +682,7 @@ async def transfer_amount(m, state: FSMContext):
     except Exception:
         amount=Decimal('0')
     if amount <= 0 or amount != amount.quantize(Decimal('0.01')):
-        await m.answer(_t(m.from_user.id,"invalid_amount"))
+        await m.answer(await _t(m.from_user.id,"invalid_amount"))
         return
     receiver_id=int(data['receiver_id'])
     sender_id=int(m.from_user.id)
@@ -695,7 +696,7 @@ async def transfer_amount(m, state: FSMContext):
             receiver=await conn.fetchrow("SELECT user_id,username FROM users WHERE user_id=$1 FOR UPDATE",receiver_id)
             if not sender or not receiver:
                 await state.clear()
-                await m.answer(_t(m.from_user.id,"data_missing"))
+                await m.answer(await _t(m.from_user.id,"data_missing"))
                 return
             balance=Decimal(str(sender[col] or 0))
             if balance < amount:
@@ -705,7 +706,7 @@ async def transfer_amount(m, state: FSMContext):
                     f"Saldo kamu: <b>{balance:g} {label}</b>\n"
                     f"Yang dibutuhkan: <b>{amount:g} {label}</b>",
                     parse_mode='HTML',
-                    reply_markup=_buy_balance_kb(kind,m.from_user.id)
+                    reply_markup=await _buy_balance_kb(kind,m.from_user.id)
                 )
                 return
             await conn.execute(f"UPDATE users SET {col}={col}-$1 WHERE user_id=$2",amount,sender_id)
@@ -736,29 +737,29 @@ async def transfer_amount(m, state: FSMContext):
 async def keyword_help(m:Message):
     text=(m.text or '').strip().lower()
     if text in {'group','vip','video'}:
-        rows=quick_links()
-        await m.answer(_t(m.from_user.id,"bot_links"),parse_mode='HTML',
+        rows=await quick_links()
+        await m.answer(await _t(m.from_user.id,"bot_links"),parse_mode='HTML',
                        reply_markup=InlineKeyboardMarkup(inline_keyboard=rows or [[InlineKeyboardButton(text='🏠 Menu',callback_data='home')]]))
         return
     if text in {'poin','point','points'}:
         p=await get_pool(); bal=await p.fetchval('SELECT points FROM users WHERE user_id=$1',m.from_user.id) or 0
-        await m.answer(_t(m.from_user.id,'points_balance',bal=float(bal)),parse_mode='HTML',
+        await m.answer(await _t(m.from_user.id,'points_balance',bal=float(bal)),parse_mode='HTML',
                        reply_markup=InlineKeyboardMarkup(inline_keyboard=[
-                           [InlineKeyboardButton(text=_t(m.from_user.id,'buy_points'),callback_data='buy_points')],
-                           [InlineKeyboardButton(text=_t(m.from_user.id,'send_points_btn'),callback_data='send_points')]
+                           [InlineKeyboardButton(text=await _t(m.from_user.id,'buy_points'),callback_data='buy_points')],
+                           [InlineKeyboardButton(text=await _t(m.from_user.id,'send_points_btn'),callback_data='send_points')]
                        ]))
         return
     if text in {'star','stars'}:
         p=await get_pool(); bal=await p.fetchval('SELECT stars FROM users WHERE user_id=$1',m.from_user.id) or 0
-        await m.answer(_t(m.from_user.id,'stars_balance',bal=float(bal)),parse_mode='HTML',
+        await m.answer(await _t(m.from_user.id,'stars_balance',bal=float(bal)),parse_mode='HTML',
                        reply_markup=InlineKeyboardMarkup(inline_keyboard=[
-                           [InlineKeyboardButton(text=_t(m.from_user.id,'buy_stars'),callback_data='buy_stars')],
-                           [InlineKeyboardButton(text=_t(m.from_user.id,'send_stars_btn'),callback_data='send_stars')]
+                           [InlineKeyboardButton(text=await _t(m.from_user.id,'buy_stars'),callback_data='buy_stars')],
+                           [InlineKeyboardButton(text=await _t(m.from_user.id,'send_stars_btn'),callback_data='send_stars')]
                        ]))
 
 async def media_hint(m:Message):
-    await m.answer(_t(m.from_user.id,'media_hint'),parse_mode='HTML',
-                   reply_markup=InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text=_t(m.from_user.id,'upfile'),callback_data='upfile')]]))
+    await m.answer(await _t(m.from_user.id,'media_hint'),parse_mode='HTML',
+                   reply_markup=InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text=await _t(m.from_user.id,'upfile'),callback_data='upfile')]]))
 
 @router.message(F.chat.type == 'private', F.photo)
 async def photo_hint(m): await media_hint(m)
@@ -798,7 +799,7 @@ async def group_get_file(c):
     p=await get_pool()
     started=await p.fetchval("SELECT bot_started_at FROM users WHERE user_id=$1",c.from_user.id)
     if not started:
-        await c.answer(_t(c.from_user.id,"start_first"), show_alert=True)
+        await c.answer(await _t(c.from_user.id,"start_first"), show_alert=True)
         return
 
     f=await p.fetchrow(
@@ -806,7 +807,7 @@ async def group_get_file(c):
         "WHERE lower(code)=lower($1) AND active=TRUE",code
     )
     if not f:
-        await c.answer(_t(c.from_user.id,"inactive"), show_alert=True)
+        await c.answer(await _t(c.from_user.id,"inactive"), show_alert=True)
         return
 
     from handlers.getfile import open_choices
@@ -824,6 +825,6 @@ async def group_get_file(c):
                 [InlineKeyboardButton(text="GET FILE", callback_data=f"getcode:{f['code']}")]
             ])
         )
-        await c.answer(_t(c.from_user.id,"sent_get"))
+        await c.answer(await _t(c.from_user.id,"sent_get"))
     except Exception:
-        await c.answer(_t(c.from_user.id,"open_private"), show_alert=True)
+        await c.answer(await _t(c.from_user.id,"open_private"), show_alert=True)
