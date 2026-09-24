@@ -23,10 +23,108 @@ async def new_code(counts):
         code=f"{BOT_USERNAME}_{rnd()}_{counts[0]}p{counts[1]}v{counts[2]}d"
         if not await p.fetchval('SELECT 1 FROM files WHERE code=$1',code): return code
 
-def media_kb():
+
+async def _lang(uid):
+    return (await get_lang(uid) or "id").lower()
+
+def _t(lang, key, **kw):
+    T = {
+        "up_title": {
+            "id": "📤 <b>UP FILE</b>",
+            "en": "📤 <b>UPLOAD FILE</b>",
+            "zh": "📤 <b>上传文件</b>",
+        },
+        "up_start": {
+            "id": "Kirim maksimal <b>{max}</b> media.\nMedia sampai 20 MB disimpan ke Backblaze B2. Media di atas 20 MB otomatis memakai Telegram file_id.\nSetelah selesai tekan <b>✅ Selesai Upload</b>.",
+            "en": "Send up to <b>{max}</b> media files.\nMedia up to 20 MB is stored in Backblaze B2. Media above 20 MB automatically uses the Telegram file_id.\nWhen finished, press <b>✅ Finish Upload</b>.",
+            "zh": "最多发送 <b>{max}</b> 个媒体文件。\n20 MB 以内的媒体会保存到 Backblaze B2。超过 20 MB 的媒体会自动使用 Telegram file_id。\n完成后点击 <b>✅ 完成上传</b>。",
+        },
+        "finish": {"id":"✅ Selesai Upload","en":"✅ Finish Upload","zh":"✅ 完成上传"},
+        "cancel": {"id":"❌ Batal","en":"❌ Cancel","zh":"❌ 取消"},
+        "received": {
+            "id":"✅ <b>{n}/{max}</b> media diterima.",
+            "en":"✅ <b>{n}/{max}</b> media received.",
+            "zh":"✅ 已接收 <b>{n}/{max}</b> 个媒体。",
+        },
+        "size": {"id":"📎 Ukuran: <b>{size:.1f} MB</b>","en":"📎 Size: <b>{size:.1f} MB</b>","zh":"📎 大小：<b>{size:.1f} MB</b>"},
+        "storage": {"id":"💾 Storage: <b>Telegram file_id</b>","en":"💾 Storage: <b>Telegram file_id</b>","zh":"💾 存储：<b>Telegram file_id</b>"},
+        "large": {
+            "id":"ℹ️ Media di atas 20 MB tidak dikirim ke B2.",
+            "en":"ℹ️ Media above 20 MB is not uploaded to B2.",
+            "zh":"ℹ️ 超过 20 MB 的媒体不会上传到 B2。",
+        },
+        "continue": {
+            "id":"Tekan <b>✅ Selesai Upload</b> untuk lanjut.",
+            "en":"Press <b>✅ Finish Upload</b> to continue.",
+            "zh":"点击 <b>✅ 完成上传</b> 继续。",
+        },
+        "b2_unavailable": {
+            "id":"⚠️ B2 tidak tersedia. Media disimpan menggunakan <b>Telegram file_id</b>。",
+            "en":"⚠️ B2 is unavailable. The media is stored using the <b>Telegram file_id</b>.",
+            "zh":"⚠️ B2 不可用。媒体将使用 <b>Telegram file_id</b> 保存。",
+        },
+        "loading": {
+            "id":"⏳ <b>Loading…</b>\n\n📤 Menyimpan media <b>{n}/{max}</b>",
+            "en":"⏳ <b>Loading…</b>\n\n📤 Saving media <b>{n}/{max}</b>",
+            "zh":"⏳ <b>加载中…</b>\n\n📤 正在保存媒体 <b>{n}/{max}</b>",
+        },
+        "saved": {
+            "id":"Tekan <b>✅ Selesai Upload</b> untuk lanjut.",
+            "en":"Press <b>✅ Finish Upload</b> to continue.",
+            "zh":"点击 <b>✅ 完成上传</b> 继续。",
+        },
+        "failed": {
+            "id":"❌ <b>Gagal memproses media.</b>\n\n📦 Tersimpan: <b>{n}/{max}</b>",
+            "en":"❌ <b>Failed to process media.</b>\n\n📦 Saved: <b>{n}/{max}</b>",
+            "zh":"❌ <b>处理媒体失败。</b>\n\n📦 已保存：<b>{n}/{max}</b>",
+        },
+        "no_media": {"id":"❌ Belum ada media.","en":"❌ No media uploaded yet.","zh":"❌ 尚未上传媒体。"},
+        "title_prompt": {
+            "id":"📝 <b>MASUKKAN JUDUL</b>\n\n📦 {n} media siap disimpan.\n\nKirim judul code:",
+            "en":"📝 <b>ENTER TITLE</b>\n\n📦 {n} media ready to save.\n\nSend the code title:",
+            "zh":"📝 <b>输入标题</b>\n\n📦 {n} 个媒体已准备保存。\n\n请输入 Code 标题：",
+        },
+        "title_empty": {"id":"❌ Judul tidak boleh kosong.","en":"❌ Title cannot be empty.","zh":"❌ 标题不能为空。"},
+        "tag_prompt": {
+            "id":"🏷 <b>MASUKKAN TAG</b>\n\nContoh: <code>movie action 2026</code>\nKirim maksimal 10 tag. Jika tidak ada, kirim <code>-</code>.",
+            "en":"🏷 <b>ENTER TAGS</b>\n\nExample: <code>movie action 2026</code>\nSend up to 10 tags. If none, send <code>-</code>.",
+            "zh":"🏷 <b>输入标签</b>\n\n示例：<code>movie action 2026</code>\n最多发送 10 个标签。如果没有，请发送 <code>-</code>。",
+        },
+        "price_prompt": {
+            "id":"💰 <b>MASUKKAN HARGA CODE</b>\n\nCreator dapat membuat paid code.\nMinimal Rp{min} • Maksimal Rp{max} • kelipatan Rp1.000\nKirim <code>0</code> untuk FREE.",
+            "en":"💰 <b>ENTER CODE PRICE</b>\n\nCreators can create paid codes.\nMinimum Rp{min} • Maximum Rp{max} • increments of Rp1,000\nSend <code>0</code> for FREE.",
+            "zh":"💰 <b>输入 CODE 价格</b>\n\n创作者可以创建付费 Code。\n最低 Rp{min} • 最高 Rp{max} • 必须为 Rp1,000 的倍数\n发送 <code>0</code> 表示免费。",
+        },
+        "media_missing": {"id":"❌ Media tidak ditemukan. Silakan mulai UP FILE lagi.","en":"❌ Media not found. Please start UP FILE again.","zh":"❌ 找不到媒体。请重新开始上传。"},
+        "price_invalid": {"id":"❌ Harga tidak valid.","en":"❌ Invalid price.","zh":"❌ 价格无效。"},
+        "creator_paid": {
+            "id":"❌ Hanya Creator/Admin yang dapat membuat paid code. Kirim 0.",
+            "en":"❌ Only Creator/Admin can create paid codes. Send 0.",
+            "zh":"❌ 只有创作者/管理员可以创建付费 Code。发送 0。",
+        },
+        "creator_daily": {
+            "id":"❌ Creator wajib membuat minimal 1 Paid Code setiap hari. Masukkan harga mulai Rp2.000.",
+            "en":"❌ Creators must create at least 1 Paid Code every day. Enter a price starting from Rp2,000.",
+            "zh":"❌ 创作者每天必须至少创建 1 个付费 Code。请输入至少 Rp2,000 的价格。",
+        },
+        "price_range": {
+            "id":"❌ Harga harus Rp{min} s/d Rp{max}.",
+            "en":"❌ Price must be between Rp{min} and Rp{max}.",
+            "zh":"❌ 价格必须在 Rp{min} 至 Rp{max} 之间。",
+        },
+        "cancelled": {"id":"❌ Upload dibatalkan.","en":"❌ Upload cancelled.","zh":"❌ 上传已取消。"},
+    }
+    lang = lang if lang in ("id","en","zh") else "id"
+    return T[key][lang].format(**kw)
+
+def _media_kb(lang):
     return InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text='✅ Selesai Upload',callback_data='up_finish')],
-        [InlineKeyboardButton(text='❌ Batal',callback_data='up_cancel')]])
+        [InlineKeyboardButton(text=_t(lang, "finish"), callback_data="up_finish")],
+        [InlineKeyboardButton(text=_t(lang, "cancel"), callback_data="up_cancel")]
+    ])
+
+def media_kb(lang='id'):
+    return _media_kb(lang)
 
 def clean_tags(s):
     parts=[re.sub(r'[,\n#]+',' ',x).strip() for x in (s or '').split()]
@@ -35,17 +133,16 @@ def clean_tags(s):
 @router.callback_query(F.data=='upfile')
 async def start(c,state):
     await loading(c); await state.clear(); await state.set_state(U.media)
-    await state.update_data(media=[],status_message_id=None)
+    lang = await _lang(c.from_user.id)
+    await state.update_data(media=[],status_message_id=None, lang=lang)
     try:
         msg=await c.message.edit_text(
-            f'📤 <b>UP FILE</b>\n\nKirim maksimal <b>{MAX_MEDIA}</b> media.\n'
-            'Media sampai 20 MB disimpan ke Backblaze B2. Media di atas 20 MB otomatis memakai Telegram file_id. Setelah selesai tekan <b>✅ Selesai Upload</b>.',
-            parse_mode='HTML',reply_markup=media_kb())
+            _t(lang, "up_title") + "\n\n" + _t(lang, "up_start", max=MAX_MEDIA),
+            parse_mode='HTML',reply_markup=_media_kb(lang))
     except Exception:
         msg=await c.message.answer(
-            f'📤 <b>UP FILE</b>\n\nKirim maksimal <b>{MAX_MEDIA}</b> media.\n'
-            'Media sampai 20 MB disimpan ke Backblaze B2. Media di atas 20 MB otomatis memakai Telegram file_id. Setelah selesai tekan <b>✅ Selesai Upload</b>.',
-            parse_mode='HTML',reply_markup=media_kb())
+            _t(lang, "up_title") + "\n\n" + _t(lang, "up_start", max=MAX_MEDIA),
+            parse_mode='HTML',reply_markup=_media_kb(lang))
     await state.update_data(status_message_id=msg.message_id)
 
 @router.message(F.chat.type == "private", U.media)
@@ -56,6 +153,7 @@ async def receive(m,state):
         d=await state.get_data()
         media=list(d.get('media',[]))
         status_id=d.get('status_message_id')
+        lang = d.get('lang') or await _lang(uid)
         path=None
 
         if len(media)>=MAX_MEDIA:
@@ -111,13 +209,13 @@ async def receive(m,state):
                         await m.bot.edit_message_text(
                             chat_id=m.chat.id,
                             message_id=status_id,
-                            text=(f'📤 <b>UP FILE</b>\n\n'
-                                  f'✅ <b>{len(media)}/{MAX_MEDIA}</b> media diterima.\n\n'
-                                  f'📎 Ukuran: <b>{size / 1024 / 1024:.1f} MB</b>\n'
-                                  '💾 Storage: <b>Telegram file_id</b>\n'
-                                  'ℹ️ Media di atas 20 MB tidak dikirim ke B2.\n\n'
-                                  'Tekan <b>✅ Selesai Upload</b> untuk lanjut.'),
-                            parse_mode='HTML',reply_markup=media_kb())
+                            text=(_t(lang, "up_title") + "\n\n" +
+                                  _t(lang, "received", n=len(media), max=MAX_MEDIA) + "\n\n" +
+                                  _t(lang, "size", size=size / 1024 / 1024) + "\n" +
+                                  _t(lang, "storage") + "\n" +
+                                  _t(lang, "large") + "\n\n" +
+                                  _t(lang, "continue")),
+                            parse_mode='HTML',reply_markup=_media_kb(lang))
                     except: pass
                 try: await m.delete()
                 except: pass
@@ -132,10 +230,10 @@ async def receive(m,state):
                     try:
                         await m.bot.edit_message_text(
                             chat_id=m.chat.id,message_id=status_id,
-                            text=(f'📤 <b>UP FILE</b>\n\n'
-                                  f'✅ <b>{len(media)}/{MAX_MEDIA}</b> media diterima.\n\n'
-                                  '⚠️ B2 tidak tersedia. Media disimpan menggunakan <b>Telegram file_id</b>.'),
-                            parse_mode='HTML',reply_markup=media_kb())
+                            text=(_t(lang, "up_title") + "\n\n" +
+                                  _t(lang, "received", n=len(media), max=MAX_MEDIA) + "\n\n" +
+                                  _t(lang, "b2_unavailable")),
+                            parse_mode='HTML',reply_markup=_media_kb(lang))
                     except: pass
                 try: await m.delete()
                 except: pass
@@ -145,8 +243,8 @@ async def receive(m,state):
                 try:
                     await m.bot.edit_message_text(
                         chat_id=m.chat.id,message_id=status_id,
-                        text=f'⏳ <b>Loading…</b>\n\n📤 Menyimpan media <b>{len(media)+1}/{MAX_MEDIA}</b>',
-                        parse_mode='HTML',reply_markup=media_kb())
+                        text=_t(lang, "loading", n=len(media)+1, max=MAX_MEDIA),
+                        parse_mode='HTML',reply_markup=_media_kb(lang))
                 except: pass
 
             fd,path=tempfile.mkstemp(prefix='pastele_')
@@ -193,10 +291,10 @@ async def receive(m,state):
                 try:
                     await m.bot.edit_message_text(
                         chat_id=m.chat.id,message_id=status_id,
-                        text=(f'📤 <b>UP FILE</b>\n\n'
-                              f'✅ <b>{len(media)}/{MAX_MEDIA}</b> media diterima.\n\n'
-                              'Tekan <b>✅ Selesai Upload</b> untuk lanjut.'),
-                        parse_mode='HTML',reply_markup=media_kb())
+                        text=(_t(lang, "up_title") + "\n\n" +
+                              _t(lang, "received", n=len(media), max=MAX_MEDIA) + "\n\n" +
+                              _t(lang, "saved")),
+                        parse_mode='HTML',reply_markup=_media_kb(lang))
                 except: pass
             try: await m.delete()
             except: pass
@@ -213,9 +311,8 @@ async def receive(m,state):
                 try:
                     await m.bot.edit_message_text(
                         chat_id=m.chat.id,message_id=status_id,
-                        text=(f'❌ <b>Gagal memproses media.</b>\n\n'
-                              f'📦 Tersimpan: <b>{len(media)}/{MAX_MEDIA}</b>'),
-                        parse_mode='HTML',reply_markup=media_kb())
+                        text=_t(lang, "failed", n=len(media), max=MAX_MEDIA),
+                        parse_mode='HTML',reply_markup=_media_kb(lang))
                 except: pass
         finally:
             if path:
@@ -225,16 +322,18 @@ async def receive(m,state):
 @router.callback_query(F.data=='up_finish')
 async def finish(c,state):
     d=await state.get_data(); media=d.get('media',[])
-    if not media:return await c.answer('Belum ada media.',show_alert=True)
+    lang = d.get('lang') or await _lang(c.from_user.id)
+    if not media:return await c.answer(_t(lang, "no_media"),show_alert=True)
     await state.set_state(U.title)
-    await c.message.edit_text(f'📝 <b>MASUKKAN JUDUL</b>\n\n📦 {len(media)} media siap disimpan.\n\nKirim judul code:',parse_mode='HTML')
+    await c.message.edit_text(_t(lang, "title_prompt", n=len(media)),parse_mode='HTML')
 
 @router.message(U.title)
 async def title(m,state):
     title=(m.text or '').strip()
-    if not title:return await m.answer('❌ Judul tidak boleh kosong.')
+    lang = (await state.get_data()).get('lang') or await _lang(m.from_user.id)
+    if not title:return await m.answer(_t(lang, "title_empty"))
     await state.update_data(title=title[:150]); await state.set_state(U.tags)
-    await m.answer('🏷 <b>MASUKKAN TAG</b>\n\nContoh: <code>movie action 2026</code>\nKirim maksimal 10 tag. Jika tidak ada, kirim <code>-</code>.',parse_mode='HTML')
+    await m.answer(_t(lang, "tag_prompt"),parse_mode='HTML')
 
 @router.message(U.tags)
 async def tags(m,state):
@@ -247,11 +346,9 @@ async def tags(m,state):
     creator=await is_creator(m.from_user.id)
     if creator:
         await state.set_state(U.price)
+        lang = (await state.get_data()).get('lang') or await _lang(m.from_user.id)
         await m.answer(
-            f'💰 <b>MASUKKAN HARGA CODE</b>\n\n'
-            f'Creator dapat membuat paid code.\n'
-            f'Minimal Rp{PAID_CODE_MIN_IDR:,} • Maksimal Rp{PAID_CODE_MAX_IDR:,} • kelipatan Rp1.000\n'
-            f'Kirim <code>0</code> untuk FREE.'.replace(',','.'),
+            _t(lang, "price_prompt", min=f"{PAID_CODE_MIN_IDR:,}".replace(",", "."), max=f"{PAID_CODE_MAX_IDR:,}".replace(",", ".")),
             parse_mode='HTML')
         return
 
@@ -265,8 +362,9 @@ async def create_code(m,state,price:int):
     title=d.get('title','Untitled')
     tags=d.get('tags',[])
     if not media:
+        lang = await _lang(m.from_user.id)
         await state.clear()
-        return await m.answer('❌ Media tidak ditemukan. Silakan mulai UP FILE lagi.')
+        return await m.answer(_t(lang, "media_missing"))
 
     counts=[
         sum(x['type']=='photo' for x in media),
@@ -358,17 +456,17 @@ async def price(m,state):
     creator=await is_creator(m.from_user.id)
     from config import OWNER_ID,ADMIN_IDS
     allowed=creator or m.from_user.id==OWNER_ID or m.from_user.id in ADMIN_IDS
-    if price<0:return await m.answer('❌ Harga tidak valid.')
-    if not allowed and price!=0:return await m.answer('❌ Hanya Creator/Admin yang dapat membuat paid code. Kirim 0.')
+    if price<0:return await m.answer(_t(await _lang(m.from_user.id), 'price_invalid'))
+    if not allowed and price!=0:return await m.answer(_t(await _lang(m.from_user.id), 'creator_paid'))
     if allowed and creator and price==0:
         p=await get_pool()
         already=await p.fetchval("SELECT 1 FROM files WHERE owner_id=$1 AND price_idr>0 AND created_at::date=CURRENT_DATE LIMIT 1",m.from_user.id)
         if not already:
-            return await m.answer('Creator wajib membuat minimal 1 Paid Code setiap hari. Masukkan harga mulai Rp2.000.')
+            return await m.answer(_t(await _lang(m.from_user.id), 'creator_daily'))
     if allowed and price and not (PAID_CODE_MIN_IDR<=price<=PAID_CODE_MAX_IDR):
-        return await m.answer(f'❌ Harga harus Rp{PAID_CODE_MIN_IDR:,} s/d Rp{PAID_CODE_MAX_IDR:,}.'.replace(',','.'))
+        return await m.answer(_t(await _lang(m.from_user.id), 'price_range', min=f'{PAID_CODE_MIN_IDR:,}'.replace(',', '.'), max=f'{PAID_CODE_MAX_IDR:,}'.replace(',', '.')))
     await create_code(m,state,price)
 
 @router.callback_query(F.data=='up_cancel')
 async def cancel(c,state):
-    await loading(c); await state.clear(); await c.message.edit_text('❌ Upload dibatalkan.')
+    await loading(c); await state.clear(); await c.message.edit_text(_t(await _lang(c.from_user.id), 'cancelled'))
