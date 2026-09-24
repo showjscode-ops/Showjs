@@ -222,7 +222,7 @@ async def _code_nav(page,total,mode,uid=0):
     else:
         rows.append([InlineKeyboardButton(text=await _t(uid,'top'),callback_data='top_codes'),
                      InlineKeyboardButton(text=await _t(uid,'all'),callback_data='code_all')])
-    rows.append([InlineKeyboardButton(text=await _t(c.from_user.id,'back'),callback_data='home')])
+    rows.append([InlineKeyboardButton(text=await _t(uid,'back'),callback_data='home')])
     return InlineKeyboardMarkup(inline_keyboard=rows)
 
 async def _render_code_list(c,page=0,mode="all"):
@@ -522,7 +522,7 @@ def _help_pages(lang: str):
         pages.append(current)
     return pages or [""]
 
-async def _help_keyboard(lang: str, page: int):
+async def _help_keyboard(lang: str, page: int, uid: int = 0):
     pages = _help_pages(lang)
     rows = []
     nav = []
@@ -538,7 +538,7 @@ async def _help_keyboard(lang: str, page: int):
         InlineKeyboardButton(text='🇨🇳 中文',callback_data='help:lang:zh')
     ])
     rows.append([InlineKeyboardButton(text=f"Page {page+1}/{len(pages)}", callback_data='help:noop')])
-    rows.append([InlineKeyboardButton(text=await _t(c.from_user.id,'back'),callback_data='home')])
+    rows.append([InlineKeyboardButton(text=await _t(uid,'back'),callback_data='home')])
     return InlineKeyboardMarkup(inline_keyboard=rows)
 
 @router.callback_query(F.data=='help')
@@ -547,7 +547,7 @@ async def help_(c):
     await c.message.edit_text(
         _help_pages("id")[0],
         parse_mode='HTML',
-        reply_markup=await _help_keyboard("id", 0)
+        reply_markup=await _help_keyboard("id", 0, c.from_user.id)
     )
 
 @router.callback_query(F.data.startswith('help:lang:'))
@@ -558,7 +558,7 @@ async def help_lang(c):
     await c.message.edit_text(
         _help_pages(lang)[0],
         parse_mode='HTML',
-        reply_markup=await _help_keyboard(lang, 0)
+        reply_markup=await _help_keyboard(lang, 0, c.from_user.id)
     )
 
 @router.callback_query(F.data.startswith('help:page:'))
@@ -577,7 +577,7 @@ async def help_page(c):
     await c.message.edit_text(
         pages[page],
         parse_mode='HTML',
-        reply_markup=await _help_keyboard(lang, page)
+        reply_markup=await _help_keyboard(lang, page, c.from_user.id)
     )
 
 @router.callback_query(F.data=='help:noop')
@@ -591,11 +591,11 @@ async def vip(c):
     kb.append([InlineKeyboardButton(text=await _t(c.from_user.id,'back'),callback_data='home')])
     await loading(c); await c.message.edit_text(await _t(c.from_user.id,'buy_vip'),parse_mode='HTML',reply_markup=InlineKeyboardMarkup(inline_keyboard=kb))
 
-async def quick_links():
+async def quick_links(uid: int = 0):
     # Group Code opens a dedicated link menu so users can choose the
     # group/all-code/backup/notification destination.
     rows=[]
-    rows.append([InlineKeyboardButton(text=await _t(c.from_user.id,'group'),callback_data='open_group_info')])
+    rows.append([InlineKeyboardButton(text=await _t(uid,'group'),callback_data='open_group_info')])
     return rows
 
 @router.callback_query(F.data=='open_group_info')
@@ -737,7 +737,7 @@ async def transfer_amount(m, state: FSMContext):
 async def keyword_help(m:Message):
     text=(m.text or '').strip().lower()
     if text in {'group','vip','video'}:
-        rows=await quick_links()
+        rows=await quick_links(m.from_user.id)
         await m.answer(await _t(m.from_user.id,"bot_links"),parse_mode='HTML',
                        reply_markup=InlineKeyboardMarkup(inline_keyboard=rows or [[InlineKeyboardButton(text='🏠 Menu',callback_data='home')]]))
         return
