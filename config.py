@@ -38,9 +38,12 @@ NOTICE_SUB_CHANNEL_URL=os.getenv("NOTICE_SUB_CHANNEL_URL", os.getenv("NOTIF_CHAN
 FORCE_CHANNEL_USERNAME=os.getenv("FORCE_CHANNEL_USERNAME","").strip().lstrip("@")
 NOTICE_SUB_CHANNEL_USERNAME=os.getenv("NOTICE_SUB_CHANNEL_USERNAME", os.getenv("NOTIF_CHANNEL_USERNAME","")).strip().lstrip("@")
 CODE_GROUP_ID=env_int("CODE_GROUP_ID")
-CODE_GROUP_URL=os.getenv("CODE_GROUP_URL","https://t.me/+kR6SJNQ8sUZjZTYx").strip()
+CODE_GROUP_URL="https://t.me/+WeFUnjG8ojQzOWQ5"
 CODE_GROUP_TITLE=os.getenv("CODE_GROUP_TITLE","Group Chat Code").strip() or "Group Chat Code"
-NOTICE_CHANNEL_URL=os.getenv("NOTICE_CHANNEL_URL", "https://t.me/noticsaluran").strip()
+NOTICE_CHANNEL_URL="https://t.me/noticsaluran"
+ALL_CODE_CHANNEL_URL="https://t.me/+NrHk5eHAiTFiNzc1"
+BACKUP_CHANNEL_URL="https://t.me/+g3t3JY6ft8xhYTE1"
+
 TRANSACTION_CHANNEL_URL=os.getenv("TRANSACTION_CHANNEL_URL","https://t.me/+8NajMZzycUE2NGE1").strip()
 # Telegram Bot API needs a chat/channel ID (or public @username) to actually post.
 # The private invite URL above is kept for user-facing links; configure this ID in Railway.
