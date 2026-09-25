@@ -179,7 +179,7 @@ async def show(m,code):
       f"🔑 <code>{html.escape(code)}</code>\n{paid}\n"
       f"👁 Views: <b>{stats['views']}</b>  👍 <b>{stats['likes']}</b>  👎 <b>{stats['hates']}</b>  ⭐ <b>{stats['favorites']}</b>\n\n"
       f"Bagikan code ini ke teman-teman untuk membuka media ini.",
-      parse_mode='HTML',reply_markup=code_info_kb(code,f['title'] or 'Code',await _lang(m.from_user.id)))
+      parse_mode='HTML',reply_markup=await code_info_kb(code,f['title'] or 'Code',await _lang(m.from_user.id)))
 
 @router.callback_query(F.data=='getfile')
 async def start(c):
