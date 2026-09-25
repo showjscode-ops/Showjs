@@ -158,7 +158,7 @@ async def ci(c):
     await c.message.edit_text(
         await _t(c.from_user.id,'checkin',day=day,bal=float(bal)),
         parse_mode='HTML',
-        reply_markup=InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text=await _t(uid,'back'),callback_data='menu_lainnya')]])
+        reply_markup=InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text=await _t(c.from_user.id,'back'),callback_data='menu_lainnya')]])
     )
 
 @router.callback_query(F.data=='my_code')
@@ -177,7 +177,7 @@ async def my(c):
             kb.append([InlineKeyboardButton(text=f"📝 {title}", callback_data=f"browsecode:{r['code']}")])
     else:
         text+=await _t(c.from_user.id,'no_code')
-    kb.append([InlineKeyboardButton(text=await _t(uid,'back'),callback_data='menu_lainnya')])
+    kb.append([InlineKeyboardButton(text=await _t(c.from_user.id,'back'),callback_data='menu_lainnya')])
     await loading(c)
     await c.message.edit_text(text,parse_mode='HTML',reply_markup=InlineKeyboardMarkup(inline_keyboard=kb))
 

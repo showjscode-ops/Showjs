@@ -8,9 +8,9 @@ from utils.i18n import get_lang, translate
 router = Router()
 
 
-def _lang(user_id: int) -> str:
+async def _lang(user_id: int) -> str:
     try:
-        return get_lang(user_id) or "id"
+        return await get_lang(user_id) or "id"
     except Exception:
         return "id"
 
@@ -65,7 +65,7 @@ def _t(lang: str, key: str, **kwargs) -> str:
 
 @router.callback_query(F.data.startswith("buy_vip"))
 async def listvip(c):
-    lang = _lang(c.from_user.id)
+    lang = await _lang(c.from_user.id)
     rows = await (await get_pool()).fetch(
         "SELECT code,name,price,duration_days FROM vip_packages WHERE active ORDER BY price"
     )
@@ -88,7 +88,7 @@ async def listvip(c):
 
 @router.callback_query(F.data.startswith("vip:"))
 async def choose(c):
-    lang = _lang(c.from_user.id)
+    lang = await _lang(c.from_user.id)
     code = c.data.split(":", 1)[1]
     r = await (await get_pool()).fetchrow(
         "SELECT * FROM vip_packages WHERE code=$1 AND active", code
@@ -133,7 +133,7 @@ async def choose(c):
 
 @router.callback_query(F.data.startswith("vip_provider:"))
 async def pay(c):
-    lang = _lang(c.from_user.id)
+    lang = await _lang(c.from_user.id)
     _, code, provider = c.data.split(":")
     r = await (await get_pool()).fetchrow(
         "SELECT * FROM vip_packages WHERE code=$1 AND active", code
@@ -197,7 +197,7 @@ async def pay(c):
 async def vip_manual(c, state):
     from handlers.payments import ManualProofState
 
-    lang = _lang(c.from_user.id)
+    lang = await _lang(c.from_user.id)
     code = c.data.split(":", 1)[1]
     r = await (await get_pool()).fetchrow(
         "SELECT * FROM vip_packages WHERE code=$1 AND active", code
