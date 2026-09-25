@@ -13,6 +13,13 @@ from config import CODE_GROUP_ID, CODE_GROUP_URL, NOTICE_CHANNEL_URL, CODE_GROUP
 from utils.callback_loading import loading
 router=Router()
 
+
+# Direct Group & Channel links
+DIRECT_GROUP_CODE_URL = "https://t.me/+WeFUnjG8ojQzOWQ5"
+DIRECT_ALL_CODE_URL = "https://t.me/+NrHk5eHAiTFiNzc1"
+DIRECT_BACKUP_URL = "https://t.me/+g3t3JY6ft8xhYTE1"
+DIRECT_NOTICE_URL = "https://t.me/noticsaluran"
+
 class TransferState(StatesGroup):
     username = State()
     amount = State()
@@ -601,18 +608,16 @@ async def quick_links(uid: int = 0):
 @router.callback_query(F.data=='open_group_info')
 async def open_group_info(c):
     await loading(c)
-    rows=[]
-    if CODE_GROUP_URL:
-        rows.append([InlineKeyboardButton(text=await _t(c.from_user.id,'group'),url=CODE_GROUP_URL)])
-    if ALL_CODE_CHANNEL_URL:
-        rows.append([InlineKeyboardButton(text=await _t(c.from_user.id,'all_channel'),url=ALL_CODE_CHANNEL_URL)])
-    if BACKUP_CHANNEL_URL:
-        rows.append([InlineKeyboardButton(text=await _t(c.from_user.id,'backup'),url=BACKUP_CHANNEL_URL)])
-    if NOTICE_CHANNEL_URL:
-        rows.append([InlineKeyboardButton(text=await _t(c.from_user.id,'notice'),url=NOTICE_CHANNEL_URL)])
-    rows.append([InlineKeyboardButton(text=await _t(c.from_user.id,'back'),callback_data='menu_lainnya')])
+    uid = c.from_user.id
+    rows = [
+        [InlineKeyboardButton(text=await _t(uid, 'group'), url=DIRECT_GROUP_CODE_URL)],
+        [InlineKeyboardButton(text=await _t(uid, 'all_channel'), url=DIRECT_ALL_CODE_URL)],
+        [InlineKeyboardButton(text=await _t(uid, 'backup'), url=DIRECT_BACKUP_URL)],
+        [InlineKeyboardButton(text=await _t(uid, 'notice'), url=DIRECT_NOTICE_URL)],
+        [InlineKeyboardButton(text=await _t(uid, 'back'), callback_data='menu_lainnya')],
+    ]
     await c.message.edit_text(
-        await _t(c.from_user.id,'group_channel'),
+        await _t(uid, 'group_channel'),
         parse_mode='HTML',
         reply_markup=InlineKeyboardMarkup(inline_keyboard=rows)
     )
