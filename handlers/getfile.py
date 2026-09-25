@@ -464,8 +464,7 @@ async def open_media(c,method):
                     [InlineKeyboardButton(text=_L(lang,'back'),callback_data='home')]
                 ])
             )
-        return await c.answer(_L(lang,'cannot_open'),show_alert=True)
-    await c.answer(_L(lang,'success_open'))
+        return await c.message.answer(_L(lang,'cannot_open'))
     from utils.group_notify import notify_code_opened
     await notify_code_opened(c.bot, code, c.from_user.id, c.from_user.username, c.from_user.full_name)
     permanent=(reason=='own')
@@ -476,10 +475,17 @@ async def open_media(c,method):
 
 @router.callback_query(F.data.startswith('openvip:'))
 async def openvip(c):
+    # A CallbackQuery must be acknowledged quickly. DB/payment/unlock work can
+    # take several seconds, so acknowledge it before any awaited work.
+    try:
+        await c.answer()
+    except Exception:
+        pass
     lang = await _lang(c.from_user.id)
     code=c.data.split(':',1)[1]
     f=await get_file(code)
-    if not f:return await c.answer(_L(await _lang(c.from_user.id),'not_found'),show_alert=True)
+    if not f:
+        return await c.message.answer(_L(await _lang(c.from_user.id),'not_found'))
     ok,_,reason,_=await unlock(c.from_user.id,code,int(f['media_count']),'balance')
     if not ok:
         if reason=='vip_quota':
@@ -496,8 +502,7 @@ async def openvip(c):
                     [InlineKeyboardButton(text=_L(lang,'back'),callback_data='home')]
                 ])
             )
-        return await c.answer(_L(lang,'cannot_open'),show_alert=True)
-    await c.answer(_L(lang,'success_open'))
+        return await c.message.answer(_L(lang,'cannot_open'))
     from utils.group_notify import notify_code_opened
     await notify_code_opened(c.bot, code, c.from_user.id, c.from_user.username, c.from_user.full_name)
     exp=await _access_expiry(c.from_user.id,code)
