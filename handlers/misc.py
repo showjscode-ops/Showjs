@@ -605,6 +605,10 @@ async def quick_links(uid: int = 0):
     rows.append([InlineKeyboardButton(text=await _t(uid,'group'),callback_data='open_group_info')])
     return rows
 
+@router.callback_query(F.data=='group_code')
+async def group_code(c):
+    await open_group_info(c)
+
 @router.callback_query(F.data=='open_group_info')
 async def open_group_info(c):
     await loading(c)
